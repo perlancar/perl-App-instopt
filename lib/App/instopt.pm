@@ -99,10 +99,10 @@ sub download {
     my $state = _init(\%args);
 
     return [501, "Not yet implemented"];
-    my $mod = _load_swcat_mod($args{software});
-    $mod->get_download_url(
-        maybe arch => $args{arch},
-    );
+    #my $mod = _load_swcat_mod($args{software});
+    #$mod->get_download_url(
+    #    maybe arch => $args{arch},
+    #);
 }
 
 $SPEC{update} = {
@@ -118,10 +118,6 @@ sub update {
     my $state = _init(\%args);
 
     return [501, "Not yet implemented"];
-    my $mod = _load_swcat_mod($args{software});
-    $mod->get_download_url(
-        maybe arch => $args{arch},
-    );
 }
 
 $SPEC{update_all} = {
