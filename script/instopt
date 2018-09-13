@@ -1,0 +1,149 @@
+#!perl
+
+# DATE
+# VERSION
+
+use 5.010;
+use strict;
+use warnings;
+use Log::ger; BEGIN { $ENV{LOG_LEVEL} //= 'info' }
+
+use Perinci::CmdLine::Any;
+
+my $prefix = "/App/instopt/";
+
+my $cli = Perinci::CmdLine::Any->new(
+    url => $prefix,
+    log => 1,
+    subcommands => {
+        'list-installed'  => {url=>"${prefix}list_installed"},
+        'list-downloaded' => {url=>"${prefix}list_downloaded"},
+        'download'        => {url=>"${prefix}download"},
+        'update'          => {url=>"${prefix}update"},
+        'update_all'      => {url=>"${prefix}update_all"},
+    },
+);
+$cli->run;
+
+# ABSTRACT: Download and install software
+# PODNAME:
+
+=head1 SYNOPSIS
+
+ # List all installed software in /opt
+ % instopt list-installed
+ % instopt list-installed -l
+
+ # Download a software (e.g. firefox), will be put in $ARCHIVE/f/firefox/<VERSION>/<ARCH>/
+ % instopt download firefox
+
+ # List downloaded versions/archs of a software
+ % instopt list-downloaded firefox
+
+ # Update (download + install) a software in /opt
+ % instopt update firefox
+
+ # Update all software in /opt
+ % instopt update-all
+
+
+=head1 DESCRIPTION
+
+B<STATUS:> Early release. Most things are not yet implemented.
+
+B<instopt> is an opinionated tool to automate downloading and installing
+software binaries (by default to F</opt>, hence the name: "B<inst>all to
+/B<opt>"). To describe how it works, I'll describe how I install my software to
+F</opt>.
+
+Normally, I depend on the package manager of my OS (Linux distribution) to
+install software. But some software need to be updated more often. Let's take as
+example B<firefox>, where the OS version is usually too old for my taste. I'll
+usually do this:
+
+=over
+
+=item 1.
+
+Go to the Mozilla download page and download the latest firefox binary, let's
+say F<firefox-99.1.2.tar.bz2>.
+
+=item 2.
+
+Save this file to F<~/software/f/firefox/99.1.2/linux-x86_64/>, so I can share
+this with my other laptops and PC, to avoid redownloading the same stuff.
+
+=item 3.
+
+To install, I do the rest of the steps as root. I extract the tarball to
+F</opt/firefox-99.1.2/>.
+
+=item 4.
+
+I create (or update) symlink F</opt/firefox> to point to F</opt/firefox-99.1.2>.
+
+=item 5.
+
+I create (or update) symlink F</usr/local/bin/firefox> to
+F</opt/firefox/firefox>.
+
+=back
+
+When a new version of Firefox comes out, I do the following:
+
+=over
+
+=item 1.
+
+Go to the Mozilla website. Download the latest Firefox tarball, e.g.
+F<firefox-99.1.3.tar.bz2>.
+
+=item 2.
+
+Save it to F<~/software/f/firefox/99.1.3/linux-x86_64/>.
+
+=item 3.
+
+Extract the tarball to F</opt/firefox-99.1.3>.
+
+=item 4.
+
+Update the symlink F</opt/firefox> to point to F</opt/firefox-99.1.3>.
+
+=item 5.
+
+Optionally delete F</opt/firefox-99.1.2>.
+
+=back
+
+B<instopt> is the tool I wrote to automate the above tasks. Now I only need to
+do:
+
+ # instopt update firefox
+
+This will download the latest firefox, save the tarball to the appropriate
+location, extract it to F</opt>, and create/update the symlinks.
+
+You can customize the target directory (F</opt>) and the software archive
+directory (F<~/software>).
+
+To start using B<instopt>, first install it from CPAN. Also install the catalog
+module for the software that you want/need, e.g. for firefox
+L<Software::Catalog::SW::firefox>. This module tells B<instopt> how to find out
+the latest version, where the download URL is, and so on.
+
+You might also want to create a configuration file F<~/.config/instopt.conf>
+containing:
+
+ # if not the default ~/software
+ archive_dir = /mnt/shared/software
+
+ # if not the default /opt
+ target_dir = /usr/local/opt
+
+After that, install away.
+
+
+=head1 SEE ALSO
+
+L<swcat> from L<App::swcat>
