@@ -20,7 +20,7 @@ my $cli = Perinci::CmdLine::Any->new(
         'list-downloaded' => {url=>"${prefix}list_downloaded"},
         'download'        => {url=>"${prefix}download"},
         'update'          => {url=>"${prefix}update"},
-        'update_all'      => {url=>"${prefix}update_all"},
+        'update-all'      => {url=>"${prefix}update_all"},
     },
 );
 $cli->run;
@@ -29,6 +29,19 @@ $cli->run;
 # PODNAME:
 
 =head1 SYNOPSIS
+
+In F<~/.config/instopt.conf>:
+
+ # if not the default ~/software
+ download_dir = /home/ujang/software
+
+ # if not the default /opt
+ install_dir = !path ~/opt
+
+ # if not the default /usr/local/bin
+ program_dir = !path ~/bin
+
+Then:
 
  # List all installed software in /opt
  % instopt list-installed
@@ -124,8 +137,8 @@ do:
 This will download the latest firefox, save the tarball to the appropriate
 location, extract it to F</opt>, and create/update the symlinks.
 
-You can customize the target directory (F</opt>) and the software archive
-directory (F<~/software>).
+You can customize the install directory (F</opt>) and the download directory
+(F<~/software>).
 
 To start using B<instopt>, first install it from CPAN. Also install the catalog
 module for the software that you want/need, e.g. for firefox
@@ -136,10 +149,10 @@ You might also want to create a configuration file F<~/.config/instopt.conf>
 containing:
 
  # if not the default ~/software
- archive_dir = /mnt/shared/software
+ download_dir = /mnt/shared/software
 
  # if not the default /opt
- target_dir = /usr/local/opt
+ install_dir = /usr/local/opt
 
 After that, install away.
 
