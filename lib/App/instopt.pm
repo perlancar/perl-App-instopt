@@ -71,7 +71,7 @@ sub _ua {
     $_ua;
 }
 
-# resolve redirects
+# try to resolve redirect
 sub _real_url {
     require HTTP::Request;
 
@@ -88,11 +88,38 @@ sub _real_url {
                 die "URL '$url' redirects without Location";
             }
         } elsif ($res->code !~ /^2/) {
-            die "Can't HEAD URL '$url': ".$res->code." - ".$res->message;
+            warn "Can't HEAD URL '$url': ".$res->code." - ".$res->message;
+            # give up
+            return undef;
         } else {
             return $url;
         }
     }
+}
+
+sub _convert_download_urls_to_filenames {
+    require URI::Escape;
+
+    my %args = @_;
+    my $res = $args{res};
+
+    my @urls = ref($res->[2]) eq 'ARRAY' ? @{$res->[2]} : ($res->[2]);
+    my @metanames = $res->[3]{'func.filename'} ?
+        (ref($res->[3]{'func.filename'}) eq 'ARRAY' ? @{ $res->[3]{'func.filename'} } : ($res->[3]{'func.filename'})) : ();
+
+    my @filenames;
+    for my $i (0..$#urls) {
+        if ($#metanames >= $i) {
+            push @filenames, $metanames[$i];
+        } elsif (my $rurl = _real_url($urls[$i])) {
+            (my $filename = $rurl) =~ s!.+/!!;
+            $filename = URI::Escape::uri_unescape($filename);
+            push @filenames, $filename;
+        } else {
+            push @filenames, "$args{software}-$args{version}";
+        }
+    }
+    @filenames;
 }
 
 sub _init {
@@ -197,7 +224,6 @@ $SPEC{download} = {
 };
 sub download {
     require File::Path;
-    require URI::Escape;
 
     my %args = @_;
     my $state = _init(\%args);
@@ -209,11 +235,13 @@ sub download {
     return $res if $res->[0] != 200;
     my $v = $res->[2];
 
-    $res = $mod->get_download_url(
+    my $dlurlres = $mod->get_download_url(
         arch => $args{arch},
     );
-    return $res if $res->[0] != 200;
-    my @urls = ref($res->[2]) eq 'ARRAY' ? @{$res->[2]} : ($res->[2]);
+    return $dlurlres if $dlurlres->[0] != 200;
+    my @urls = ref($dlurlres->[2]) eq 'ARRAY' ? @{$dlurlres->[2]} : ($dlurlres->[2]);
+    my @filenames = _convert_download_urls_to_filenames(
+        res => $dlurlres, software => $args{software}, version => $v);
 
     my $target_dir = join(
         "",
@@ -227,10 +255,9 @@ sub download {
 
     my $ua = _ua();
     my @files;
-    for my $url0 (@urls) {
-        my $url = _real_url($url0);
-        my ($filename) = $url =~ m!.+/(.+)!;
-        $filename = URI::Escape::uri_unescape($filename);
+    for my $i (0..$#urls) {
+        my $url = $urls[$i];
+        my $filename = $filenames[$i];
         my $target_path = "$target_dir/$filename";
         push @files, $target_path;
         log_info "Downloading %s to %s ...", $url, $target_path;
@@ -243,6 +270,7 @@ sub download {
     [200, "OK", undef, {
         'func.version' => $v,
         'func.files' => \@files,
+        'func.unwrap_tarball' => $dlurlres->[3]{'func.unwrap_tarball'} // 1,
     }];
 }
 
@@ -269,14 +297,14 @@ sub update {
   UPDATE: {
         log_info "Updating software %s ...", $args{software};
 
-        my $res = download(%args);
-        return $res if $res->[0] != 200;
+        my $dlres = download(%args);
+        return $dlres if $dlres->[0] != 200;
 
         my ($filepath, $filename);
-        if (@{ $res->[3]{'func.files'} } != 1) {
+        if (@{ $dlres->[3]{'func.files'} } != 1) {
             return [412, "Currently cannot handle software that has multiple downloaded files"];
         }
-        $filepath = $filename = $res->[3]{'func.files'}[0];
+        $filepath = $filename = $dlres->[3]{'func.files'}[0];
         $filename =~ s!.+/!!;
 
         my $cafres = Filename::Archive::check_archive_filename(
@@ -287,7 +315,7 @@ sub update {
 
         my $target_name = join(
             "",
-            $args{software}, "-", $res->[3]{'func.version'},
+            $args{software}, "-", $dlres->[3]{'func.version'},
         );
         my $target_dir = join(
             "",
@@ -307,7 +335,7 @@ sub update {
             my $ar = Archive::Any->new($filepath);
             $ar->extract($target_dir);
 
-            _unwrap($target_dir);
+            _unwrap($target_dir) if $dlres->[3]{'func.unwrap_tarball'};
         } # EXTRACT
 
       SYMLINK_DIR: {

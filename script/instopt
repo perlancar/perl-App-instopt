@@ -62,7 +62,7 @@ Then:
 
 =head1 DESCRIPTION
 
-B<STATUS:> Early release. Most things are not yet implemented.
+B<STATUS:> Early, experimental release. Many things can change without notice.
 
 B<instopt> is an opinionated tool to automate downloading and installing
 software binaries (by default to F</opt>, hence the name: "B<inst>all to
