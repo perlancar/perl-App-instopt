@@ -322,6 +322,7 @@ $SPEC{cleanup} = {
         %args_common,
         #%App::swcat::arg0_software,
     },
+    # XXX add dry_run
 };
 sub cleanup {
     require File::Path;
