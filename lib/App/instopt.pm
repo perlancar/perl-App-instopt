@@ -231,7 +231,7 @@ $SPEC{list_installed_versions} = {
 sub list_installed_versions {
     my %args = @_;
 
-    my $res = list_installed(_software=>$args{software}, detail=>1);
+    my $res = list_installed(%args, _software=>$args{software}, detail=>1);
     return $res unless $res->[0] == 200;
     my $row = $res->[2][0];
     return [200, "OK (none installed)"] unless $row;
@@ -313,6 +313,41 @@ sub download {
         'func.files' => \@files,
         'func.unwrap_tarball' => $dlurlres->[3]{'func.unwrap_tarball'} // 1,
     }];
+}
+
+$SPEC{cleanup} = {
+    v => 1.1,
+    summary => 'Remove inactive versions',
+    args => {
+        %args_common,
+        #%App::swcat::arg0_software,
+    },
+};
+sub cleanup {
+    require File::Path;
+
+    my %args = @_;
+
+    local $CWD = $args{install_dir};
+    my $res = list_installed(%args, _software=>$args{software}, detail=>1);
+    return $res unless $res->[0] == 200;
+    for my $row (@{ $res->[2] }) {
+        my $sw = $row->{software};
+        log_trace "Skipping software $sw because there is no active version"
+            unless defined $row->{active_version};
+        next unless defined $row->{inactive_versions};
+        log_trace "Cleaning up software $sw ...";
+        for my $v (split /, /, $row->{inactive_versions}) {
+            my $dir = "$sw-$v";
+            unless (-d $dir) {
+                log_trace "  Skipping version $v (directory does not exist)";
+                next;
+            }
+            log_trace "  Removing $dir ...";
+            File::Path::remove_tree($dir);
+        }
+    }
+    [200];
 }
 
 $SPEC{update} = {
