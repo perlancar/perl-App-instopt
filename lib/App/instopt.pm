@@ -158,6 +158,14 @@ sub _unwrap {
     rmdir "$dir/$entries[0].$rand" or die "Can't rmdir $dir/$entries[0].$rand: $!";
 }
 
+sub _load_versioning_scheme_mod {
+    my $scheme = shift;
+    my $mod = "Versioning::Scheme::$scheme";
+    (my $modpm = "$mod.pm") =~ s!::!/!g;
+    require $modpm;
+    $mod;
+}
+
 $SPEC{list_installed} = {
     v => 1.1,
     summary => 'List all installed software',
@@ -243,7 +251,6 @@ $SPEC{list_downloaded} = {
     summary => 'List all downloaded software',
     args => {
         %args_common,
-        %App::swcat::arg0_software,
         detail => {
             schema => ['bool*', is=>1],
             cmdline_aliases => {l=>{}},
@@ -251,7 +258,82 @@ $SPEC{list_downloaded} = {
     },
 };
 sub list_downloaded {
-    [501, "Not yet implemented"];
+    my %args = @_;
+    my $state = _init(\%args);
+
+    my $res = App::swcat::list();
+    return [500, "Can't list known software: $res->[0] - $res->[1]"] if $res->[0] != 200;
+    my $known = $res->[2];
+
+    if ($args{_software}) {
+        return [412, "Unknown software '$args{_software}'"] unless
+            grep { $_ eq $args{_software} } @$known;
+        $known = [$args{_software}];
+    }
+
+    my @rows;
+    {
+        local $CWD = $args{download_dir};
+      SW:
+        for my $sw (@$known) {
+            my $dir = sprintf "%s/%s", substr($sw, 0, 1), $sw;
+            unless (-d $dir) {
+                log_trace "Skipping software '$sw': directory doesn't exist";
+                next SW;
+            }
+            local $CWD = $dir;
+            my $swmod = App::swcat::_load_swcat_mod($sw);
+            my $vscheme = $swmod->meta->{versioning_scheme};
+            die "Software $sw doesn't specify versioning scheme"
+                unless $vscheme;
+            my $vsmod = _load_versioning_scheme_mod($vscheme);
+            my @vers;
+          VER:
+            for my $e (glob "*") {
+                next unless -d $e;
+                next unless $vsmod->is_valid($e);
+                push @vers, $e;
+            }
+            unless (@vers) {
+                log_trace "Skipping software '$sw': no versions found";
+            }
+            @vers = sort { $vsmod->cmp($a, $b) } @vers;
+            log_trace "Found versions %s for software '%s'", \@vers, $sw;
+            push @rows, {
+                software => $sw,
+                latest_version => $vers[-1],
+                all_versions => join(", ", @vers),
+            };
+        }
+    }
+
+    my $resmeta = {};
+
+    if ($args{detail}) {
+        $resmeta->{'table.fields'} = [qw/software latest_version all_versions/];
+    } else {
+        @rows = map { $_->{software} } @rows;
+    }
+
+    [200, "OK", \@rows, $resmeta];
+}
+
+$SPEC{list_downloaded_versions} = {
+    v => 1.1,
+    summary => 'List all downloaded versions of a software',
+    args => {
+        %args_common,
+        %App::swcat::arg0_software,
+    },
+};
+sub list_downloaded_versions {
+    my %args = @_;
+
+    my $res = list_downloaded(%args, _software=>$args{software}, detail=>1);
+    return $res unless $res->[0] == 200;
+    my $row = $res->[2][0];
+    return [200, "OK (none downloaded)"] unless $row;
+    return [200, "OK", [map {(split /, /, $_)} grep {defined} $row->{all_versions}]];
 }
 
 $SPEC{download} = {
@@ -315,40 +397,84 @@ sub download {
     }];
 }
 
-$SPEC{cleanup} = {
+$SPEC{cleanup_install_dir} = {
     v => 1.1,
-    summary => 'Remove inactive versions',
+    summary => 'Remove inactive versions of installed software',
     args => {
         %args_common,
-        #%App::swcat::arg0_software,
     },
-    # XXX add dry_run
+    features => { dry_run=>1 },
 };
-sub cleanup {
+sub cleanup_install_dir {
     require File::Path;
 
     my %args = @_;
 
     local $CWD = $args{install_dir};
-    my $res = list_installed(%args, _software=>$args{software}, detail=>1);
+    my $res = list_installed(%args, detail=>1);
     return $res unless $res->[0] == 200;
     for my $row (@{ $res->[2] }) {
         my $sw = $row->{software};
         log_trace "Skipping software $sw because there is no active version"
             unless defined $row->{active_version};
         next unless defined $row->{inactive_versions};
-        log_trace "Cleaning up software $sw ...";
+        #log_trace "Cleaning up software $sw ...";
         for my $v (split /, /, $row->{inactive_versions}) {
             my $dir = "$sw-$v";
             unless (-d $dir) {
-                log_trace "  Skipping version $v (directory does not exist)";
+                log_trace "Skipping version $v of software $sw (directory does not exist)";
                 next;
             }
-            log_trace "  Removing $dir ...";
-            File::Path::remove_tree($dir);
+            if ($args{-dry_run}) {
+                log_trace "[DRY-RUN] Removing $dir ...";
+            } else {
+                log_trace "Removing $dir ...";
+                File::Path::remove_tree($dir);
+            }
         }
     }
-    [200];
+    $args{-dry_run} ? [304, "Dry-run"] : [200];
+}
+
+$SPEC{cleanup_download_dir} = {
+    v => 1.1,
+    summary => 'Remove older versions of downloaded software',
+    args => {
+        %args_common,
+    },
+    features => { dry_run=>1 },
+};
+sub cleanup_download_dir {
+    require File::Path;
+
+    my %args = @_;
+
+    local $CWD = $args{download_dir};
+    my $res = list_downloaded(%args, detail=>1);
+    return $res unless $res->[0] == 200;
+  SW:
+    for my $row (@{ $res->[2] }) {
+        my $sw = $row->{software};
+        next unless $row->{all_versions};
+        my @vers = split /, /, $row->{all_versions};
+        unless (@vers > 1) {
+            log_trace "Skipping software $sw (<2 versions)";
+            next SW;
+        }
+        pop @vers; # remove latest version
+        my $dir = sprintf "%s/%s", substr($sw, 0, 1), $sw;
+        local $CWD = $dir;
+      VER:
+        for my $v (@vers) {
+            if ($args{-dry_run}) {
+                log_trace "[DRY-RUN] Cleaning up $sw-$v ...";
+            } else {
+                log_trace "Cleaning up software $sw-$v ...";
+                File::Path::remove_tree($v);
+            }
+        }
+    }
+    $args{-dry_run} ? [304, "Dry-run"] : [200];
 }
 
 $SPEC{update} = {

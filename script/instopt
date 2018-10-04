@@ -19,9 +19,11 @@ my $cli = Perinci::CmdLine::Any->new(
         'list-installed'           => {url=>"${prefix}list_installed"},
         'list-installed-versions'  => {url=>"${prefix}list_installed_versions"},
         'list-downloaded'          => {url=>"${prefix}list_downloaded"},
+        'list-downloaded-versions' => {url=>"${prefix}list_downloaded_versions"},
         'download'                 => {url=>"${prefix}download"},
         'update'                   => {url=>"${prefix}update"},
-        'cleanup'                  => {url=>"${prefix}cleanup"},
+        'cleanup-install-dir'      => {url=>"${prefix}cleanup_install_dir"},
+        'cleanup-download-dir'     => {url=>"${prefix}cleanup_download_dir"},
         'update-all'               => {url=>"${prefix}update_all"},
     },
 );
@@ -49,23 +51,31 @@ Then:
  % instopt list-installed
  % instopt list-installed -l
 
+ # List installed versions of a software in /opt
+ % instopt list-installed-versions firefox
+
  # Download a software (e.g. firefox), will be put in $ARCHIVE/f/firefox/<VERSION>/<ARCH>/
  % instopt download firefox
 
- # List downloaded versions/archs of a software
- % instopt list-downloaded firefox
+ # List all downloaded software
+ % instopt list-downloaded
+ % instopt list-downloaded -l
 
- # List installed versions of a software in /opt
- % instopt list-installed-versions firefox
+ # List downloaded versions of a software
+ % instopt list-downloaded-versions firefox
+ % instopt list-downloaded-versions -l firefox
 
  # Update (download + install) a software in /opt
  % instopt update firefox
 
- # Cleanup (remove inactive versions)
- % instopt cleanup
-
  # Update all software in /opt
  % instopt update-all
+
+ # Cleanup installed dir (remove inactive versions)
+ % instopt cleanup-install-dir
+
+ # Cleanup download dir (remove older versions)
+ % instopt cleanup-download-dir
 
 
 =head1 DESCRIPTION
