@@ -16,11 +16,12 @@ my $cli = Perinci::CmdLine::Any->new(
     url => $prefix,
     log => 1,
     subcommands => {
-        'list-installed'  => {url=>"${prefix}list_installed"},
-        'list-downloaded' => {url=>"${prefix}list_downloaded"},
-        'download'        => {url=>"${prefix}download"},
-        'update'          => {url=>"${prefix}update"},
-        'update-all'      => {url=>"${prefix}update_all"},
+        'list-installed'           => {url=>"${prefix}list_installed"},
+        'list-installed-versions'  => {url=>"${prefix}list_installed_versions"},
+        'list-downloaded'          => {url=>"${prefix}list_downloaded"},
+        'download'                 => {url=>"${prefix}download"},
+        'update'                   => {url=>"${prefix}update"},
+        'update-all'               => {url=>"${prefix}update_all"},
     },
 );
 $cli->run;
@@ -46,6 +47,9 @@ Then:
  # List all installed software in /opt
  % instopt list-installed
  % instopt list-installed -l
+
+ # List installed versions of a software in /opt
+ % instopt list-installed-versions firefox
 
  # Download a software (e.g. firefox), will be put in $ARCHIVE/f/firefox/<VERSION>/<ARCH>/
  % instopt download firefox

@@ -174,27 +174,68 @@ sub list_installed {
     return [500, "Can't list known software: $res->[0] - $res->[1]"] if $res->[0] != 200;
     my $known = $res->[2];
 
-    my @rows;
+    if ($args{_software}) {
+        return [412, "Unknown software '$args{_software}'"] unless
+            grep { $_ eq $args{_software} } @$known;
+        $known = [$args{_software}];
+    }
+
+    my %active_versions;
+    my %all_versions;
     {
         local $CWD = $args{install_dir};
         for my $e (glob "*") {
-            next unless -l $e;
-            next unless grep { $e eq $_ } @$known;
-            my $v = readlink($e);
-            next unless $v =~ s/\A\Q$e\E-//;
-
-            push @rows, {
-                software => $e,
-                version => $v,
-            };
+            if (-l $e) {
+                next unless grep { $e eq $_ } @$known;
+                my $v = readlink($e);
+                next unless $v =~ s/\A\Q$e\E-//;
+                $active_versions{$e} = $v;
+            } elsif (-d $e) {
+                my ($n, $v) = $e =~ /(.+)-(.+)/ or next;
+                next unless grep { $n eq $_ } @$known;
+                $all_versions{$n} //= [];
+                push @{ $all_versions{$n} }, $v;
+            }
         }
     }
 
-    unless ($args{detail}) {
+    my @rows;
+    for my $sw (sort keys %all_versions) {
+        push @rows, {
+            software => $sw,
+            #version => $active_versions{$sw},
+            active_version => $active_versions{$sw},
+            inactive_versions => join(", ", grep { !defined($active_versions{$sw}) || $_ ne $active_versions{$sw} } @{ $all_versions{$sw} }),
+        };
+    }
+
+    my $resmeta = {};
+
+    if ($args{detail}) {
+        $resmeta->{'table.fields'} = [qw/software active_version inactive_versions/];
+    } else {
         @rows = map { $_->{software} } @rows;
     }
 
-    [200, "OK", \@rows];
+    [200, "OK", \@rows, $resmeta];
+}
+
+$SPEC{list_installed_versions} = {
+    v => 1.1,
+    summary => 'List all installed versions of a software',
+    args => {
+        %args_common,
+        %App::swcat::arg0_software,
+    },
+};
+sub list_installed_versions {
+    my %args = @_;
+
+    my $res = list_installed(_software=>$args{software}, detail=>1);
+    return $res unless $res->[0] == 200;
+    my $row = $res->[2][0];
+    return [200, "OK (none installed)"] unless $row;
+    return [200, "OK", [map {(split /, /, $_)} grep {defined} ($row->{active_version}, $row->{inactive_versions})]];
 }
 
 $SPEC{list_downloaded} = {
