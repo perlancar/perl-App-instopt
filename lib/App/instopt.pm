@@ -158,14 +158,6 @@ sub _unwrap {
     rmdir "$dir/$entries[0].$rand" or die "Can't rmdir $dir/$entries[0].$rand: $!";
 }
 
-sub _load_versioning_scheme_mod {
-    my $scheme = shift;
-    my $mod = "Versioning::Scheme::$scheme";
-    (my $modpm = "$mod.pm") =~ s!::!/!g;
-    require $modpm;
-    $mod;
-}
-
 $SPEC{list_installed} = {
     v => 1.1,
     summary => 'List all installed software',
@@ -288,22 +280,18 @@ sub list_downloaded {
                 next SW;
             }
             local $CWD = $dir;
-            my $swmod = App::swcat::_load_swcat_mod($sw);
-            my $vscheme = $swmod->meta->{versioning_scheme};
-            die "Software $sw doesn't specify versioning scheme"
-                unless $vscheme;
-            my $vsmod = _load_versioning_scheme_mod($vscheme);
+            my $mod = App::swcat::_load_swcat_mod($sw);
             my @vers;
           VER:
             for my $e (glob "*") {
                 next unless -d $e;
-                next unless $vsmod->is_valid_version($e);
+                next unless $mod->is_valid_version($e);
                 push @vers, $e;
             }
             unless (@vers) {
                 log_trace "Skipping software '$sw': no versions found";
             }
-            @vers = sort { $vsmod->cmp_version($a, $b) } @vers;
+            @vers = sort { $mod->cmp_version($a, $b) } @vers;
             log_trace "Found versions %s for software '%s'", \@vers, $sw;
             push @rows, {
                 software => $sw,
@@ -357,32 +345,32 @@ sub download {
     my %args = @_;
     my $state = _init(\%args);
 
-    my $swmod = App::swcat::_load_swcat_mod($args{software});
-    my $vscheme = $swmod->meta->{versioning_scheme};
-    my $vsmod = _load_versioning_scheme_mod($vscheme);
+    my $mod = App::swcat::_load_swcat_mod($args{software});
     my $res;
 
-    log_debug "Checking latest downloaded version of software '$args{software}' ...";
     $res = list_downloaded_versions(%args, software=>$args{software});
     my $v0 = $res->[2] ? $res->[2][-1] : undef;
 
-    log_info "Checking latest version of software '$args{software}' ...";
     $res = App::swcat::latest_version(%args, software=>$args{software});
     return $res if $res->[0] != 200;
     my $v = $res->[2];
 
-    if ($v0 && $vsmod->cmp_version($v0, $v) >= 0) {
+    if (defined $v0 && $mod->cmp_version($v0, $v) >= 0) {
         log_trace "Skipped downloading software '$args{software}': downloaded version ($v0) is already latest ($v)";
         return [304, "OK"];
     }
 
-    my $dlurlres = $swmod->get_download_url(
-        arch => $args{arch},
-    );
-    return $dlurlres if $dlurlres->[0] != 200;
-    my @urls = ref($dlurlres->[2]) eq 'ARRAY' ? @{$dlurlres->[2]} : ($dlurlres->[2]);
-    my @filenames = _convert_download_urls_to_filenames(
-        res => $dlurlres, software => $args{software}, version => $v);
+    my (@urls, @filenames);
+  GET_DOWNLOAD_URL:
+    {
+        my $dlurlres = $mod->get_download_url(
+            arch => $args{arch},
+        );
+        return $dlurlres if $dlurlres->[0] != 200;
+        @urls = ref($dlurlres->[2]) eq 'ARRAY' ? @{$dlurlres->[2]} : ($dlurlres->[2]);
+        @filenames = _convert_download_urls_to_filenames(
+            res => $dlurlres, software => $args{software}, version => $v);
+    }
 
     my $target_dir = join(
         "",
@@ -411,7 +399,6 @@ sub download {
     [200, "OK", undef, {
         'func.version' => $v,
         'func.files' => \@files,
-        'func.unwrap_tarball' => $dlurlres->[3]{'func.unwrap_tarball'} // 1,
     }];
 }
 
@@ -526,7 +513,15 @@ $SPEC{update} = {
     args => {
         %args_common,
         %App::swcat::arg0_software,
-        # XXX --no-download option
+        download => {
+            summary => 'Whether to download latest version from URL'.
+                'or just find from download dir',
+            schema => 'bool*',
+            default => 1,
+            cmdline_aliases => {
+                D => {is_flag=>1, summary => 'Shortcut for --no-download', code=>sub {$_[0]{download} = 0}},
+            },
+        },
     },
 };
 sub update {
@@ -541,17 +536,61 @@ sub update {
     my $mod = App::swcat::_load_swcat_mod($args{software});
 
   UPDATE: {
-        log_info "Updating software %s ...", $args{software};
+        my $res = list_installed_versions(%args);
+        my $v0 = $res->[2] ? $res->[2][-1] : undef;
 
-        my $dlres = download(%args);
-        return $dlres if $dlres->[0] != 200;
-
+        my $v;
         my ($filepath, $filename);
-        if (@{ $dlres->[3]{'func.files'} } != 1) {
-            return [412, "Currently cannot handle software that has multiple downloaded files"];
+      DOWNLOAD_OR_GET_DOWNLOADED: {
+            if ($args{download}) {
+              DOWNLOAD: {
+                    my $dlres = download(%args);
+                    if ($dlres->[0] == 304) {
+                        goto GET_DOWNLOADED;
+                    }
+                    return [500, "Can't download: $dlres->[0] - $dlres->[1]"]
+                        unless $dlres->[0] == 200;
+                    $v = $dlres->[3]{'func.version'};
+                    if (@{ $dlres->[3]{'func.files'} } != 1) {
+                        return [412, "Currently cannot handle software that has multiple downloaded files"];
+                    }
+                    $filepath = $filename = $dlres->[3]{'func.files'}[0];
+                    $filename =~ s!.+/!!;
+                }
+                last DOWNLOAD_OR_GET_DOWNLOADED;
+            }
+          GET_DOWNLOADED: {
+                my $res = list_downloaded_versions(%args);
+                $v = $res->[2] ? $res->[2][-1] : undef;
+                if (!defined $v) {
+                    return [412, "No downloaded version of software '$args{software}' is available"];
+                }
+                {
+                    local $CWD = sprintf(
+                        "%s/%s/%s/%s/%s",
+                        $args{download_dir},
+                        substr($args{software}, 0, 1),
+                        $args{software},
+                        $v,
+                        $args{arch});
+                    my @filenames = glob "*";
+                    if (!@filenames) {
+                        return [412, "There are no files in download dir $CWD"];
+                    } elsif (@filenames != 1) {
+                        return [412, "Currently cannot handle software that has multiple downloaded files: ".join(", ", @filenames)];
+                    }
+                    $filename = $filenames[0];
+                    $filepath = "$CWD/$filename";
+                }
+            }
+        } # DOWNLOAD_OR_GET_DOWNLOADED
+
+        if (defined $v0 && $mod->cmp_version($v0, $v) >= 0) {
+            log_trace "Skipped updating software '$args{software}': installed version ($v0) is already latest ($v)";
+            return [304, "OK"];
         }
-        $filepath = $filename = $dlres->[3]{'func.files'}[0];
-        $filename =~ s!.+/!!;
+
+        log_info "Updating software %s to version %s ...", $args{software}, $v;
 
         my $cafres = Filename::Archive::check_archive_filename(
             filename => $filename);
@@ -561,13 +600,16 @@ sub update {
 
         my $target_name = join(
             "",
-            $args{software}, "-", $dlres->[3]{'func.version'},
+            $args{software}, "-", $v,
         );
         my $target_dir = join(
             "",
             $args{install_dir},
             "/", $target_name,
         );
+
+        my $aires = $mod->get_archive_info(%args, version => $v);
+        return [500, "Can't get archive info: $aires->[0] - $aires->[1]"] unless $aires->[0] == 200;
 
       EXTRACT: {
             if (-d $target_dir) {
@@ -581,7 +623,7 @@ sub update {
             my $ar = Archive::Any->new($filepath);
             $ar->extract($target_dir);
 
-            _unwrap($target_dir) if $dlres->[3]{'func.unwrap_tarball'};
+            _unwrap($target_dir) if $aires->[2]{unwrap};
         } # EXTRACT
 
       SYMLINK_DIR: {
@@ -596,8 +638,8 @@ sub update {
       SYMLINK_PROGRAMS: {
             local $CWD = $args{program_dir};
             log_trace "Creating/updating program symlinks ...";
-            my $res = $mod->get_programs;
-            for my $e (@{ $res->[2] }) {
+            my $programs = $aires->[2]{programs} // [];
+            for my $e (@$programs) {
                 if ((-l $e->{name}) || !File::MoreUtil::file_exists($e->{name})) {
                     unlink $e->{name};
                     my $target = "$args{install_dir}/$args{software}$e->{path}/$e->{name}";
