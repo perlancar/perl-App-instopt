@@ -21,6 +21,7 @@ my $cli = Perinci::CmdLine::Any->new(
         'list-downloaded'          => {url=>"${prefix}list_downloaded"},
         'list-downloaded-versions' => {url=>"${prefix}list_downloaded_versions"},
         'download'                 => {url=>"${prefix}download"},
+        'download-all'             => {url=>"${prefix}download_all"},
         'update'                   => {url=>"${prefix}update"},
         'cleanup-install-dir'      => {url=>"${prefix}cleanup_install_dir"},
         'cleanup-download-dir'     => {url=>"${prefix}cleanup_download_dir"},
@@ -56,6 +57,9 @@ Then:
 
  # Download a software (e.g. firefox), will be put in $ARCHIVE/f/firefox/<VERSION>/<ARCH>/
  % instopt download firefox
+
+ # Download all known software
+ % instopt download-all
 
  # List all downloaded software
  % instopt list-downloaded

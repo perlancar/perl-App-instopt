@@ -182,10 +182,13 @@ sub list_installed {
     return [500, "Can't list known software: $res->[0] - $res->[1]"] if $res->[0] != 200;
     my $known = $res->[2];
 
+    my $swlist;
     if ($args{_software}) {
         return [412, "Unknown software '$args{_software}'"] unless
             grep { $_ eq $args{_software} } @$known;
-        $known = [$args{_software}];
+        $swlist = [$args{_software}];
+    } else {
+        $swlist = $known;
     }
 
     my %active_versions;
@@ -194,13 +197,13 @@ sub list_installed {
         local $CWD = $args{install_dir};
         for my $e (glob "*") {
             if (-l $e) {
-                next unless grep { $e eq $_ } @$known;
+                next unless grep { $e eq $_ } @$swlist;
                 my $v = readlink($e);
                 next unless $v =~ s/\A\Q$e\E-//;
                 $active_versions{$e} = $v;
             } elsif (-d $e) {
                 my ($n, $v) = $e =~ /(.+)-(.+)/ or next;
-                next unless grep { $n eq $_ } @$known;
+                next unless grep { $n eq $_ } @$swlist;
                 $all_versions{$n} //= [];
                 push @{ $all_versions{$n} }, $v;
             }
@@ -265,17 +268,20 @@ sub list_downloaded {
     return [500, "Can't list known software: $res->[0] - $res->[1]"] if $res->[0] != 200;
     my $known = $res->[2];
 
+    my $swlist;
     if ($args{_software}) {
         return [412, "Unknown software '$args{_software}'"] unless
             grep { $_ eq $args{_software} } @$known;
-        $known = [$args{_software}];
+        $swlist = [$args{_software}];
+    } else {
+        $swlist = $known;
     }
 
     my @rows;
     {
         local $CWD = $args{download_dir};
       SW:
-        for my $sw (@$known) {
+        for my $sw (@$swlist) {
             my $dir = sprintf "%s/%s", substr($sw, 0, 1), $sw;
             unless (-d $dir) {
                 log_trace "Skipping software '$sw': directory doesn't exist";
@@ -338,7 +344,7 @@ sub list_downloaded_versions {
 
 $SPEC{download} = {
     v => 1.1,
-    summary => 'Download latest version of software',
+    summary => 'Download latest version of all software',
     args => {
         %args_common,
         %App::swcat::arg0_software,
@@ -354,7 +360,8 @@ sub download {
     my $mod = App::swcat::_load_swcat_mod($args{software});
     my $res;
 
-    $res = App::swcat::latest_version(%args);
+    log_info "Checking latest version of software '$args{software}' ...";
+    $res = App::swcat::latest_version(%args, software=>$args{software});
     return $res if $res->[0] != 200;
     my $v = $res->[2];
 
@@ -395,6 +402,31 @@ sub download {
         'func.files' => \@files,
         'func.unwrap_tarball' => $dlurlres->[3]{'func.unwrap_tarball'} // 1,
     }];
+}
+
+$SPEC{download_all} = {
+    v => 1.1,
+    summary => 'Download latest version of all known software',
+    args => {
+        %args_common,
+        %argopt_arch,
+    },
+};
+sub download_all {
+    my %args = @_;
+    my $state = _init(\%args);
+
+    my $res = App::swcat::list();
+    return [500, "Can't list known software: $res->[0] - $res->[1]"] if $res->[0] != 200;
+    my $known = $res->[2];
+
+    my $envresmulti = envresmulti();
+    for my $sw (@$known) {
+        $res = download(%args, software=>$sw);
+        $envresmulti->add_result($res->[0], $res->[1], {item_id=>$sw});
+    }
+
+    $envresmulti->as_struct;
 }
 
 $SPEC{cleanup_install_dir} = {
