@@ -291,13 +291,13 @@ sub list_downloaded {
           VER:
             for my $e (glob "*") {
                 next unless -d $e;
-                next unless $vsmod->is_valid($e);
+                next unless $vsmod->is_valid_version($e);
                 push @vers, $e;
             }
             unless (@vers) {
                 log_trace "Skipping software '$sw': no versions found";
             }
-            @vers = sort { $vsmod->cmp($a, $b) } @vers;
+            @vers = sort { $vsmod->cmp_version($a, $b) } @vers;
             log_trace "Found versions %s for software '%s'", \@vers, $sw;
             push @rows, {
                 software => $sw,
