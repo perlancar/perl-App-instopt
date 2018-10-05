@@ -357,15 +357,26 @@ sub download {
     my %args = @_;
     my $state = _init(\%args);
 
-    my $mod = App::swcat::_load_swcat_mod($args{software});
+    my $swmod = App::swcat::_load_swcat_mod($args{software});
+    my $vscheme = $swmod->meta->{versioning_scheme};
+    my $vsmod = _load_versioning_scheme_mod($vscheme);
     my $res;
+
+    log_debug "Checking latest downloaded version of software '$args{software}' ...";
+    $res = list_downloaded_versions(%args, software=>$args{software});
+    my $v0 = $res->[2] ? $res->[2][-1] : undef;
 
     log_info "Checking latest version of software '$args{software}' ...";
     $res = App::swcat::latest_version(%args, software=>$args{software});
     return $res if $res->[0] != 200;
     my $v = $res->[2];
 
-    my $dlurlres = $mod->get_download_url(
+    if ($v0 && $vsmod->cmp_version($v0, $v) >= 0) {
+        log_trace "Skipped downloading software '$args{software}': downloaded version ($v0) is already latest ($v)";
+        return [304, "OK"];
+    }
+
+    my $dlurlres = $swmod->get_download_url(
         arch => $args{arch},
     );
     return $dlurlres if $dlurlres->[0] != 200;
