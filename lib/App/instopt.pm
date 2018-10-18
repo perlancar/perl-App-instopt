@@ -332,10 +332,10 @@ sub list_downloaded_versions {
 
 $SPEC{download} = {
     v => 1.1,
-    summary => 'Download latest version of all software',
+    summary => 'Download latest version of one or more software',
     args => {
         %args_common,
-        %App::swcat::arg0_software,
+        %App::swcat::arg0_softwares_or_patterns,
         %argopt_arch,
     },
 };
@@ -345,61 +345,84 @@ sub download {
     my %args = @_;
     my $state = _init(\%args);
 
-    my $mod = App::swcat::_load_swcat_mod($args{software});
-    my $res;
+    my ($sws, $is_single_software) =
+        App::swcat::_get_arg_softwares_or_patterns(\%args);
 
-    $res = list_downloaded_versions(%args, software=>$args{software});
-    my $v0 = $res->[2] ? $res->[2][-1] : undef;
+    my $envres = envresmulti();
+    my ($v, @files);
+  SW:
+    for my $sw (@$sws) {
+        my $mod = App::swcat::_load_swcat_mod($sw);
+        my $res;
 
-    $res = App::swcat::latest_version(%args, software=>$args{software});
-    return $res if $res->[0] != 200;
-    my $v = $res->[2];
+        $res = list_downloaded_versions(%args, software=>$sw);
+        my $v0 = $res->[2] ? $res->[2][-1] : undef;
 
-    if (defined $v0 && $mod->cmp_version($v0, $v) >= 0) {
-        log_trace "Skipped downloading software '$args{software}': downloaded version ($v0) is already latest ($v)";
-        return [304, "OK"];
-    }
-
-    my (@urls, @filenames);
-  GET_DOWNLOAD_URL:
-    {
-        my $dlurlres = $mod->get_download_url(
-            arch => $args{arch},
-        );
-        return $dlurlres if $dlurlres->[0] != 200;
-        @urls = ref($dlurlres->[2]) eq 'ARRAY' ? @{$dlurlres->[2]} : ($dlurlres->[2]);
-        @filenames = _convert_download_urls_to_filenames(
-            res => $dlurlres, software => $args{software}, version => $v);
-    }
-
-    my $target_dir = join(
-        "",
-        $args{download_dir},
-        "/", substr($args{software}, 0, 1),
-        "/", $args{software},
-        "/", $v,
-        "/", $args{arch},
-    );
-    File::Path::make_path($target_dir);
-
-    my $ua = _ua();
-    my @files;
-    for my $i (0..$#urls) {
-        my $url = $urls[$i];
-        my $filename = $filenames[$i];
-        my $target_path = "$target_dir/$filename";
-        push @files, $target_path;
-        log_info "Downloading %s to %s ...", $url, $target_path;
-        my $lwpres = $ua->mirror($url, $target_path);
-        unless ($lwpres->is_success || $lwpres->code =~ /^304/) {
-            die "Can't download $url to $target_path: " .
-                $lwpres->code." - ".$lwpres->message;
+        $res = App::swcat::latest_version(%args, softwares_or_patterns=>[$sw]);
+        unless ($res->[0] == 200) {
+            $envres->add_result($res->[0], "Can't get latest version: $res->[1]", {item_id=>$sw});
+            next SW;
         }
+        $v = $res->[2];
+        log_trace "v=%s", $v;
+        if (defined $v0 && $mod->cmp_version($v0, $v) >= 0) {
+            log_trace "Skipped downloading software '$sw': downloaded version ($v0) is already latest ($v)";
+            $envres->add_result(304, "OK (installed version same/newer version)", {item_id=>$sw});
+            next SW;
+        }
+
+        my (@urls, @filenames);
+      GET_DOWNLOAD_URL:
+        {
+            my $dlurlres = $mod->get_download_url(
+                arch => $args{arch},
+            );
+            unless ($dlurlres->[0] == 200) {
+                $envres->add_result($dlurlres->[0], "Can't get download URL: $dlurlres->[1]", {item_id=>$sw});
+                next SW;
+            }
+            @urls = ref($dlurlres->[2]) eq 'ARRAY' ? @{$dlurlres->[2]} : ($dlurlres->[2]);
+            @filenames = _convert_download_urls_to_filenames(
+                res => $dlurlres, software => $sw, version => $v);
+        }
+
+        my $target_dir = join(
+            "",
+            $args{download_dir},
+            "/", substr($sw, 0, 1),
+            "/", $sw,
+            "/", $v,
+            "/", $args{arch},
+        );
+        File::Path::make_path($target_dir);
+
+        my $ua = _ua();
+        @files = ();
+        for my $i (0..$#urls) {
+            my $url = $urls[$i];
+            my $filename = $filenames[$i];
+            my $target_path = "$target_dir/$filename";
+            push @files, $target_path;
+            log_info "Downloading %s to %s ...", $url, $target_path;
+            my $lwpres = $ua->mirror($url, $target_path);
+            #log_trace "lwpres=%s", $lwpres;
+            unless ($lwpres->is_success || $lwpres->code =~ /^304/) {
+                my $errmsg = "Can't download $url to $target_path: ".$lwpres->code." - ".$lwpres->message;
+                log_error $errmsg;
+                $envres->add_result(500, $errmsg, {item_id=>$sw});
+            }
+        }
+        $envres->add_result(200, "OK", {item_id=>$sw});
+    } # SW
+
+    my $res = $envres->as_struct;
+    if ($is_single_software) {
+        $res->[3] = {
+            'func.version' => $v,
+            'func.files' => \@files,
+        };
     }
-    [200, "OK", undef, {
-        'func.version' => $v,
-        'func.files' => \@files,
-    }];
+    $res;
 }
 
 $SPEC{download_all} = {
@@ -418,13 +441,7 @@ sub download_all {
     return [500, "Can't list known software: $res->[0] - $res->[1]"] if $res->[0] != 200;
     my $known = $res->[2];
 
-    my $envresmulti = envresmulti();
-    for my $sw (@$known) {
-        $res = download(%args, software=>$sw);
-        $envresmulti->add_result($res->[0], $res->[1], {item_id=>$sw});
-    }
-
-    $envresmulti->as_struct;
+    download(%args, softwares_or_patterns => $known);
 }
 
 $SPEC{cleanup_install_dir} = {
@@ -512,7 +529,7 @@ $SPEC{update} = {
     summary => 'Update a software to the latest version',
     args => {
         %args_common,
-        %App::swcat::arg0_software,
+        %App::swcat::arg0_softwares_or_patterns,
         download => {
             summary => 'Whether to download latest version from URL'.
                 'or just find from download dir',
@@ -533,10 +550,14 @@ sub update {
     my %args = @_;
     my $state = _init(\%args);
 
-    my $mod = App::swcat::_load_swcat_mod($args{software});
+    my ($sws, $is_single_software) =
+        App::swcat::_get_arg_softwares_or_patterns(\%args);
 
-  UPDATE: {
-        my $res = list_installed_versions(%args);
+    my $envres = envresmulti();
+  SW:
+    for my $sw (@$sws) {
+        my $mod = App::swcat::_load_swcat_mod($sw);
+        my $res = list_installed_versions(%args, softwares_or_patterns=>[$sw]);
         my $v0 = $res->[2] ? $res->[2][-1] : undef;
 
         my $v;
@@ -544,15 +565,22 @@ sub update {
       DOWNLOAD_OR_GET_DOWNLOADED: {
             if ($args{download}) {
               DOWNLOAD: {
-                    my $dlres = download(%args);
+                    my $dlres = download(%args, softwares_or_patterns=>[$sw]);
                     if ($dlres->[0] == 304) {
                         goto GET_DOWNLOADED;
                     }
-                    return [500, "Can't download: $dlres->[0] - $dlres->[1]"]
-                        unless $dlres->[0] == 200;
+                    unless ($dlres->[0] == 200) {
+                        my $errmsg ="Can't download $sw: $dlres->[0] - $dlres->[1]";
+                        log_error $errmsg;
+                        $envres->add_result(500, $errmsg, {item_id=>$sw});
+                        next SW;
+                    }
                     $v = $dlres->[3]{'func.version'};
                     if (@{ $dlres->[3]{'func.files'} } != 1) {
-                        return [412, "Currently cannot handle software that has multiple downloaded files"];
+                        my $errmsg = "Can't install $sw: Currently cannot handle software that has multiple downloaded files";
+                        log_error $errmsg;
+                        $envres->add_result(412, $errmsg, {item_id=>$sw});
+                        next SW;
                     }
                     $filepath = $filename = $dlres->[3]{'func.files'}[0];
                     $filename =~ s!.+/!!;
@@ -560,24 +588,33 @@ sub update {
                 last DOWNLOAD_OR_GET_DOWNLOADED;
             }
           GET_DOWNLOADED: {
-                my $res = list_downloaded_versions(%args);
+                my $res = list_downloaded_versions(%args, software=>$sw);
                 $v = $res->[2] ? $res->[2][-1] : undef;
                 if (!defined $v) {
-                    return [412, "No downloaded version of software '$args{software}' is available"];
+                    my $errmsg = "Can't install $sw: No downloaded version available";
+                    log_error $errmsg;
+                    $envres->add_result(412, $errmsg, {item_id=>$sw});
+                    next SW;
                 }
                 {
                     local $CWD = sprintf(
                         "%s/%s/%s/%s/%s",
                         $args{download_dir},
-                        substr($args{software}, 0, 1),
-                        $args{software},
+                        substr($sw, 0, 1),
+                        $sw,
                         $v,
                         $args{arch});
                     my @filenames = glob "*";
                     if (!@filenames) {
-                        return [412, "There are no files in download dir $CWD"];
+                        my $errmsg ="Can't install $sw: There are no files in download dir $CWD";
+                        log_error $errmsg;
+                        $envres->add_result(412, $errmsg, {item_id=>$sw});
+                        next SW;
                     } elsif (@filenames != 1) {
-                        return [412, "Currently cannot handle software that has multiple downloaded files: ".join(", ", @filenames)];
+                        my $errmsg = "Can't install sw: Currently cannot handle software that has multiple downloaded files: ".join(", ", @filenames);
+                        log_error $errmsg;
+                        $envres->add_result(412, $errmsg, {item_id=>$sw});
+                        next SW;
                     }
                     $filename = $filenames[0];
                     $filepath = "$CWD/$filename";
@@ -586,21 +623,25 @@ sub update {
         } # DOWNLOAD_OR_GET_DOWNLOADED
 
         if (defined $v0 && $mod->cmp_version($v0, $v) >= 0) {
-            log_trace "Skipped updating software '$args{software}': installed version ($v0) is already latest ($v)";
-            return [304, "OK"];
+            log_trace "Skipped updating software '$sw': installed version ($v0) is already latest ($v)";
+            $envres->add_result(304, "OK", {item_id=>$sw});
+            next SW;
         }
 
-        log_info "Updating software %s to version %s ...", $args{software}, $v;
+        log_info "Updating software %s to version %s ...", $sw, $v;
 
         my $cafres = Filename::Archive::check_archive_filename(
             filename => $filename);
         unless ($cafres) {
-            return [412, "Currently cannot handle software that has downloaded file that is not an archive"];
+            my $errmsg = "Can't install $sw: Currently cannot handle software that has downloaded file that is not an archive";
+            log_error $errmsg;
+            $envres->add_result(412, $errmsg, {item_id=>$sw});
+            next SW;
         }
 
         my $target_name = join(
             "",
-            $args{software}, "-", $v,
+            $sw, "-", $v,
         );
         my $target_dir = join(
             "",
@@ -609,7 +650,12 @@ sub update {
         );
 
         my $aires = $mod->get_archive_info(%args, version => $v);
-        return [500, "Can't get archive info: $aires->[0] - $aires->[1]"] unless $aires->[0] == 200;
+        unless ($aires->[0] == 200) {
+            my $errmsg = "Can't install $sw: Can't get archive info: $aires->[0] - $aires->[1]";
+            log_error $errmsg;
+            $envres->add_result(500, $errmsg, {item_id=>$sw});
+            next SW;
+        }
 
       EXTRACT: {
             if (-d $target_dir) {
@@ -629,10 +675,10 @@ sub update {
       SYMLINK_DIR: {
             local $CWD = $args{install_dir};
             log_trace "Creating/updating directory symlink to latest version ...";
-            if (File::MoreUtil::file_exists($args{software})) {
-                unlink $args{software} or die "Can't unlink $args{install_dir}/$args{software}: $!";
+            if (File::MoreUtil::file_exists($sw)) {
+                unlink $sw or die "Can't unlink $args{install_dir}/$sw: $!";
             }
-            symlink $target_name, $args{software} or die "Can't symlink $args{software} -> $target_name: $!";
+            symlink $target_name, $sw or die "Can't symlink $sw -> $target_name: $!";
         }
 
       SYMLINK_PROGRAMS: {
@@ -642,7 +688,7 @@ sub update {
             for my $e (@$programs) {
                 if ((-l $e->{name}) || !File::MoreUtil::file_exists($e->{name})) {
                     unlink $e->{name};
-                    my $target = "$args{install_dir}/$args{software}$e->{path}/$e->{name}";
+                    my $target = "$args{install_dir}/$sw$e->{path}/$e->{name}";
                     $target =~ s!//!/!g;
                     log_trace "Creating symlink $args{program_dir}/$e->{name} -> $target ...";
                     symlink $target, $e->{name} or die "Can't symlink $e->{name} -> $target: $!";
@@ -653,9 +699,10 @@ sub update {
             }
         }
 
-    } # UPDATE
+        $envres->add_result(200, "OK", {item_id=>$sw});
+    } # SW
 
-    [200, "OK"];
+    $envres->as_struct;
 }
 
 $SPEC{update_all} = {
@@ -672,13 +719,7 @@ sub update_all {
     my $res = list_installed(%args);
     return $res unless $res->[0] == 200;
 
-    my $envresmulti = envresmulti();
-    for my $sw (@{ $res->[2] }) {
-        $res = update(%args, software=>$sw);
-        $envresmulti->add_result($res->[0], $res->[1], {item_id=>$sw});
-    }
-
-    $envresmulti->as_struct;
+    update(%args, softwares_or_patterns=>$res->[2]);
 }
 
 1;
