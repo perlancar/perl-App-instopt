@@ -330,6 +330,69 @@ sub list_downloaded_versions {
     return [200, "OK", [map {(split /, /, $_)} grep {defined} $row->{all_versions}]];
 }
 
+$SPEC{compare_versions} = {
+    v => 1.1,
+    summary => 'Compare installed vs downloaded vs latest versions '.
+        'of installed software',
+    args => {
+        %args_common,
+    },
+};
+sub compare_versions {
+    my %args = @_;
+
+    my $res;
+
+    $res = list_installed(%args, detail=>1);
+    return $res unless $res->[0] == 200;
+    my $installed = $res->[2];
+
+    for my $row (@$installed) {
+        my $sw = $row->{software};
+        my $mod = App::swcat::_load_swcat_mod($sw);
+
+        $row->{installed} = delete $row->{active_version};
+        $row->{installed_inactive} = delete $row->{inactive_versions};
+
+        my $downloaded_vv;
+        $res = list_downloaded_versions(%args, software=>$sw);
+        if ($res->[0] == 200) {
+            $downloaded_vv = join ", ", @{$res->[2]};
+        } else {
+            log_error "Can't check downloaded versions of $sw: $res->[0] - $res->[1]";
+        }
+        $row->{downloaded} = $downloaded_vv;
+
+        my $latest_v;
+        $res = App::swcat::latest_version(%args, softwares_or_patterns=>[$sw]);
+        if ($res->[0] == 200) {
+            $latest_v = $res->[2];
+        } else {
+            log_error "Can't check latest version of $sw: $res->[0] - $res->[1]";
+        }
+        $row->{latest} = $latest_v;
+
+        my @vv;
+        push @vv, split(/,\s*/, $downloaded_vv) if defined $downloaded_vv;
+        push @vv, $latest_v if defined $latest_v;
+        @vv = sort { $mod->cmp_version($a, $b) } @vv;
+
+        $row->{status} = '';
+        if (@vv) {
+            my $cmp = $mod->cmp_version($row->{installed}, $vv[-1]);
+            if ($cmp >= 0) {
+                $row->{status} = 'up to date';
+            } else {
+                $row->{status} = "updatable to $vv[-1]";
+            }
+        }
+    }
+    my $resmeta = {
+        'table.fields' => [qw/software installed installed_inactive downloaded latest status/],
+    };
+    [200, "OK", $installed, $resmeta];
+}
+
 $SPEC{download} = {
     v => 1.1,
     summary => 'Download latest version of one or more software',

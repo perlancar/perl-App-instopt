@@ -26,6 +26,7 @@ my $cli = Perinci::CmdLine::Any->new(
         'cleanup-install-dir'      => {url=>"${prefix}cleanup_install_dir"},
         'cleanup-download-dir'     => {url=>"${prefix}cleanup_download_dir"},
         'update-all'               => {url=>"${prefix}update_all"},
+        'compare-versions'         => {url=>"${prefix}compare_versions"},
     },
 );
 $cli->run;
@@ -54,6 +55,9 @@ Then:
 
  # List installed versions of a software in /opt
  % instopt list-installed-versions firefox
+
+ # Compare installed versions vs downloaded vs latest, for all installed software
+ % instopt compare-versions
 
  # Download a software (e.g. firefox), will be put in $ARCHIVE/f/firefox/<VERSION>/<ARCH>/
  % instopt download firefox
