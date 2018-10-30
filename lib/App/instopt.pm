@@ -44,6 +44,18 @@ our %argopt_detail = (
     },
 );
 
+our %argopt_download = (
+    download => {
+        summary => 'Whether to download latest version from URL'.
+            'or just find from download dir',
+        schema => 'bool*',
+        default => 1,
+        cmdline_aliases => {
+            D => {is_flag=>1, summary => 'Shortcut for --no-download', code=>sub {$_[0]{download} = 0}},
+        },
+    },
+);
+
 sub _set_args_default {
     my $args = shift;
     if (!$args->{arch}) {
@@ -593,15 +605,7 @@ $SPEC{update} = {
     args => {
         %args_common,
         %App::swcat::arg0_softwares_or_patterns,
-        download => {
-            summary => 'Whether to download latest version from URL'.
-                'or just find from download dir',
-            schema => 'bool*',
-            default => 1,
-            cmdline_aliases => {
-                D => {is_flag=>1, summary => 'Shortcut for --no-download', code=>sub {$_[0]{download} = 0}},
-            },
-        },
+        %argopt_download,
     },
 };
 sub update {
@@ -773,6 +777,7 @@ $SPEC{update_all} = {
     summary => 'Update all installed software',
     args => {
         %args_common,
+        %argopt_download,
     },
 };
 sub update_all {
