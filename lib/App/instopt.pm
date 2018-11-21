@@ -736,7 +736,8 @@ sub update {
             my $ar = Archive::Any->new($filepath);
             $ar->extract($target_dir);
 
-            _unwrap($target_dir) if $aires->[2]{unwrap};
+            _unwrap($target_dir) unless
+                defined($aires->[2]{unwrap}) && !$aires->[2]{unwrap};
         } # EXTRACT
 
       SYMLINK_DIR: {
