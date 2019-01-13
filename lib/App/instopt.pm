@@ -301,10 +301,10 @@ sub list_downloaded {
                 push @vers, $e;
             }
             unless (@vers) {
-                log_trace "Skipping software '$sw': no versions found";
+                log_trace "Skipping software '$sw': no downloaded versions found";
             }
             @vers = sort { $mod->cmp_version($a, $b) } @vers;
-            log_trace "Found versions %s for software '%s'", \@vers, $sw;
+            log_trace "Found downloaded versions %s for software '%s'", \@vers, $sw;
             push @rows, {
                 software => $sw,
                 latest_version => $vers[-1],
