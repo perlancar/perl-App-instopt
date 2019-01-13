@@ -245,6 +245,7 @@ $SPEC{list_installed_versions} = {
 };
 sub list_installed_versions {
     my %args = @_;
+    my $state = _init(\%args);
 
     my $res = list_installed(%args, _software=>$args{software}, detail=>1);
     return $res unless $res->[0] == 200;
@@ -334,6 +335,7 @@ $SPEC{list_downloaded_versions} = {
 };
 sub list_downloaded_versions {
     my %args = @_;
+    my $state = _init(\%args);
 
     my $res = list_downloaded(%args, _software=>$args{software}, detail=>1);
     return $res unless $res->[0] == 200;
@@ -352,6 +354,7 @@ $SPEC{compare_versions} = {
 };
 sub compare_versions {
     my %args = @_;
+    my $state = _init(\%args);
 
     my $res;
 
@@ -531,6 +534,7 @@ sub cleanup_install_dir {
     require File::Path;
 
     my %args = @_;
+    my $state = _init(\%args);
 
     local $CWD = $args{install_dir};
     my $res = list_installed(%args, detail=>1);
@@ -570,6 +574,7 @@ sub cleanup_download_dir {
     require File::Path;
 
     my %args = @_;
+    my $state = _init(\%args);
 
     local $CWD = $args{download_dir};
     my $res = list_downloaded(%args, detail=>1);
