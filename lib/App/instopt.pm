@@ -449,7 +449,7 @@ sub download {
             next SW;
         }
 
-        my (@urls, @filenames);
+        my (@urls, @filenames, $got_arch);
       GET_DOWNLOAD_URL:
         {
             my $dlurlres = $mod->get_download_url(
@@ -462,6 +462,7 @@ sub download {
             @urls = ref($dlurlres->[2]) eq 'ARRAY' ? @{$dlurlres->[2]} : ($dlurlres->[2]);
             @filenames = _convert_download_urls_to_filenames(
                 res => $dlurlres, software => $sw, version => $v);
+            $got_arch = $dlurlres->[3]{'func.arch'} // $args{arch};
         }
 
         my $target_dir = join(
@@ -470,7 +471,7 @@ sub download {
             "/", substr($sw, 0, 1),
             "/", $sw,
             "/", $v,
-            "/", $args{arch},
+            "/", $got_arch,
         );
         File::Path::make_path($target_dir);
 
