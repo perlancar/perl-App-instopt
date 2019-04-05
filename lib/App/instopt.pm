@@ -10,6 +10,7 @@ use Log::ger;
 
 use App::swcat ();
 use File::chdir;
+use File::MoreUtil qw(dir_has_non_dot_files);
 use Perinci::Object;
 use PerlX::Maybe;
 
@@ -297,7 +298,11 @@ sub list_downloaded {
             my @vers;
           VER:
             for my $e (glob "*") {
-                next unless -d $e;
+                if ($args{_arch}) {
+                    next unless dir_has_non_dot_files("$e/$args{_arch}");
+                } else {
+                    next unless -d $e;
+                }
                 next unless $mod->is_valid_version($e);
                 push @vers, $e;
             }
@@ -331,13 +336,16 @@ $SPEC{list_downloaded_versions} = {
     args => {
         %args_common,
         %App::swcat::arg0_software,
+        %argopt_arch,
     },
 };
 sub list_downloaded_versions {
     my %args = @_;
     my $state = _init(\%args);
 
-    my $res = list_downloaded(%args, _software=>$args{software}, detail=>1);
+    return [400, "Please specify software"] unless $args{software};
+
+    my $res = list_downloaded(%args, _software=>$args{software}, _arch=>$args{arch}, detail=>1);
     return $res unless $res->[0] == 200;
     my $row = $res->[2][0];
     return [200, "OK (none downloaded)"] unless $row;
