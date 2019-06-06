@@ -9,6 +9,7 @@ use warnings;
 use Log::ger; BEGIN { $ENV{LOG_LEVEL} //= 'info' }
 
 use Perinci::CmdLine::Any;
+use Perinci::CmdLineX::CommonOptions::SelfUpgrade;
 
 my $prefix = "/App/instopt/";
 
@@ -29,6 +30,7 @@ my $cli = Perinci::CmdLine::Any->new(
         'compare-versions'         => {url=>"${prefix}compare_versions"},
     },
 );
+Perinci::CmdLineX::CommonOptions::SelfUpgrade->apply_to_object($cli);
 $cli->run;
 
 # ABSTRACT: Download and install software
@@ -84,6 +86,10 @@ Then:
 
  # Cleanup download dir (remove older versions)
  % instopt cleanup-download-dir
+
+
+ # Update program to the latest from CPAN
+ % instopt --self-upgrade ; # or -U
 
 
 =head1 DESCRIPTION
