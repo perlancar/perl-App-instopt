@@ -13,6 +13,16 @@ use Perinci::CmdLineX::CommonOptions::SelfUpgrade;
 
 my $prefix = "/App/instopt/";
 
+$Perinci::CmdLineX::CommonOptions::SelfUpgrade::_list_modules = sub {
+    require PERLANCAR::Module::List;
+    my @modules = ('App::instopt');
+    my $mods = PERLANCAR::Module::List::list_modules(
+        'Software::Catalog::SW::', {list_modules=>1, recurse=>1});
+    push @modules, $_ for sort keys %$mods;
+    #log_debug "Modules to upgrade: %s", \@modules;
+    @modules;
+};
+
 my $cli = Perinci::CmdLine::Any->new(
     url => $prefix,
     log => 1,
