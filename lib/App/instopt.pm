@@ -57,6 +57,38 @@ our %argopt_download = (
     },
 );
 
+our %argopt_make_latest_dir_as_symlink = (
+    symlink => {
+        summary => 'Whether to use symlink to create the latest version directory',
+        schema => ['bool*'],
+        default => 1,
+        description => <<'_',
+
+The default is to use symlink. This will create a symlink to the latest version
+directory, e.g.:
+
+    firefox -> firefox-69.0.2
+
+Then the program will be symlinked from this directory, e.g.:
+
+    /usr/local/bin/firefox -> /opt/firefox/firefox
+
+Another alternative (when this option is set to false) is to use hardlink. A
+directory (`firefox`) will be copied from the latest version directory (e.g.
+`firefox-69.0.2`). Then a file (`firefox/instopt.version`) will be written to
+contain the version number (`69.0.2`). Then, as usual, the program will be
+symlinked from this directory, e.g.:
+
+    /usr/local/bin/firefox -> /opt/firefox/firefox
+
+Currently hardlinking is performed using the `cp` command (with the option
+`-la`), so you need to have this on your system (normally present on all Unix
+systems).
+
+_
+    },
+);
+
 sub _set_args_default {
     my $args = shift;
     if (!$args->{arch}) {
@@ -185,6 +217,8 @@ $SPEC{list_installed} = {
     },
 };
 sub list_installed {
+    require File::Slurper;
+
     my %args = @_;
     my $state = _init(\%args);
 
@@ -205,15 +239,35 @@ sub list_installed {
     my %all_versions;
     {
         local $CWD = $args{install_dir};
+        log_trace "Listing installed software in $args{install_dir} ...";
         for my $e (glob "*") {
             if (-l $e) {
-                next unless grep { $e eq $_ } @$swlist;
+                unless (grep { $e eq $_ } @$swlist) {
+                    log_trace "Skipping symlink $e: name not in software list";
+                    next;
+                }
                 my $v = readlink($e);
-                next unless $v =~ s/\A\Q$e\E-//;
+                unless ($v =~ s/\A\Q$e\E-//) {
+                    log_trace "Skipping symlink $e: does not point to software in software list";
+                    next;
+                }
                 $active_versions{$e} = $v;
+            } elsif ((-d $e) && (-f "$e/instopt.version")) {
+                unless (grep { $e eq $_ } @$swlist) {
+                    log_trace "Skipping directory $e: name not in software list even though it has instopt.version file";
+                    next;
+                }
+                chomp($active_versions{$e} =
+                          File::Slurper::read_text("$e/instopt.version"));
             } elsif (-d $e) {
-                my ($n, $v) = $e =~ /(.+)-(.+)/ or next;
-                next unless grep { $n eq $_ } @$swlist;
+                my ($n, $v) = $e =~ /(.+)-(.+)/ or do {
+                    log_trace "Skipping directory $e: name does not contain dash (for NAME-VERSION)";
+                    next;
+                };
+                unless (grep { $n eq $_ } @$swlist) {
+                    log_trace "Skipping directory $e: name '$n' is not in software list";
+                    next;
+                }
                 $all_versions{$n} //= [];
                 push @{ $all_versions{$n} }, $v;
             }
@@ -625,6 +679,7 @@ $SPEC{update} = {
         %args_common,
         %App::swcat::arg0_softwares_or_patterns,
         %argopt_download,
+        %argopt_make_latest_dir_as_symlink,
     },
 };
 sub update {
@@ -632,12 +687,15 @@ sub update {
     require File::MoreUtil;
     require File::Path;
     require Filename::Archive;
+    require IPC::System::Options;
 
     my %args = @_;
     my $state = _init(\%args);
 
     my ($sws, $is_single_software) =
         App::swcat::_get_arg_softwares_or_patterns(\%args);
+
+    my $make_latest_dir_as_symlink = $args{make_latest_dir_as_symlink} // 1;
 
     my $envres = envresmulti();
   SW:
@@ -759,13 +817,21 @@ sub update {
                 defined($aires->[2]{unwrap}) && !$aires->[2]{unwrap};
         } # EXTRACT
 
-      SYMLINK_DIR: {
+      SYMLINK_OR_HARDLINK_DIR: {
             local $CWD = $args{install_dir};
-            log_trace "Creating/updating directory symlink to latest version ...";
+            log_trace "Creating/updating directory symlink/hardlink to latest version ...";
             if (File::MoreUtil::file_exists($sw)) {
-                unlink $sw or die "Can't unlink $args{install_dir}/$sw: $!";
+                File::Path::remove_tree($sw);
             }
-            symlink $target_name, $sw or die "Can't symlink $sw -> $target_name: $!";
+            if ($make_latest_dir_as_symlink) {
+                symlink $target_name, $sw or die "Can't symlink $sw -> $target_name: $!";
+            } else {
+                IPC::System::Options::system(
+                    {log=>1, die=>1},
+                    "cp", "-la", $target_name, $sw,
+                );
+                File::Slurper::write_text("$sw/instopt.version", $v);
+            }
         }
 
       SYMLINK_PROGRAMS: {
@@ -798,6 +864,7 @@ $SPEC{update_all} = {
     args => {
         %args_common,
         %argopt_download,
+        %argopt_make_latest_dir_as_symlink,
     },
 };
 sub update_all {
