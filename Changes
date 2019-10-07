@@ -1,3 +1,8 @@
+0.011   2019-10-07  Released-By: PERLANCAR; Urgency: medium
+
+	- update/update-all: Add option --(no-)make-latest-dir-as-symlink.
+
+
 0.010   2019-08-07  Released-By: PERLANCAR; Urgency: medium
 
 	- Update all Software::Catalog::SW::* when -U.
