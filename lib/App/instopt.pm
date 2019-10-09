@@ -49,6 +49,8 @@ our %argopt_download = (
     download => {
         summary => 'Whether to download latest version from URL'.
             'or just find from download dir',
+        'summary.alt.bool.not' => 'Do not download latest version from URL, '.
+            'just find from download dir',
         schema => 'bool*',
         default => 1,
         cmdline_aliases => {
@@ -58,8 +60,10 @@ our %argopt_download = (
 );
 
 our %argopt_make_latest_dir_as_symlink = (
-    symlink => {
+    make_latest_dir_as_symlink => {
         summary => 'Whether to use symlink to create the latest version directory',
+        'summary.alt.bool.not' => 'Do not use symlink to create latest version directory, '.
+            'but hard-copy instead',
         schema => ['bool*'],
         default => 1,
         description => <<'_',
