@@ -97,9 +97,12 @@ _
 );
 
 sub _set_args_default {
-    my $args = shift;
-    if (!$args->{arch}) {
-        $args->{arch} = App::swcat::_detect_arch();
+    my ($args, $opts) = @_;
+
+    if ($opts->{set_default_arch}) {
+        if (!$args->{arch}) {
+            $args->{arch} = App::swcat::_detect_arch();
+        }
     }
     if (!$args->{download_dir}) {
         require PERLANCAR::File::HomeDir;
@@ -180,10 +183,13 @@ sub _convert_download_urls_to_filenames {
 }
 
 sub _init {
-    my ($args) = @_;
+    my ($args, $opts) = @_;
+
+    $opts //= {};
+    $opts->{set_default_arch} //= 1;
 
     unless ($App::instopt::state) {
-        _set_args_default($args);
+        _set_args_default($args, $opts);
         my $state = {
         };
         $App::instopt::state = $state;
@@ -328,11 +334,18 @@ $SPEC{list_downloaded} = {
         %args_common,
         %argopt_arch,
         %argopt_detail,
+        per_arch => {
+            summary => 'Return per-arch hash in the all_versions field',
+            schema => 'true*',
+        },
+    },
+    args_rels => {
+        #choose_one => ['arch', 'per_arch'],
     },
 };
 sub list_downloaded {
     my %args = @_;
-    my $state = _init(\%args);
+    my $state = _init(\%args, {set_default_arch=>0});
 
     my $res = App::swcat::list();
     return [500, "Can't list known software: $res->[0] - $res->[1]"] if $res->[0] != 200;
@@ -368,7 +381,11 @@ sub list_downloaded {
                     next;
                 }
                 for my $arch (@archs) {
-                    next unless dir_has_non_dot_files("$e/$arch");
+                    #log_trace "Searching software '$sw' version '$e' arch '$arch'";
+                    unless (dir_has_non_dot_files("$e/$arch")) {
+                        #log_trace "Skipping software '$sw' version '$e' arch '$arch': no files found";
+                        next;
+                    }
                     push @{ $arch_vers{$arch} }, $e;
                 }
             }
@@ -382,7 +399,7 @@ sub list_downloaded {
                     push @vers, $ver unless grep { $ver eq $_ } @vers;
                 }
             }
-            my @vers = sort { $mod->cmp_version($a, $b) } @vers;
+            @vers = sort { $mod->cmp_version($a, $b) } @vers;
             unless (@vers) {
                 log_trace "Skipping software '$sw': no downloaded versions found";
                 next;
@@ -390,7 +407,7 @@ sub list_downloaded {
             push @rows, {
                 software => $sw,
                 latest_version => $vers[-1],
-                all_versions => join(", ", @vers),
+                all_versions => $args{per_arch} ? \%arch_vers : join(", ", @vers),
                 (arch => $args{arch}) x !!defined($args{arch}),
             };
         }
@@ -660,32 +677,34 @@ sub cleanup_download_dir {
     require File::Path;
 
     my %args = @_;
-    my $state = _init(\%args);
+    my $state = _init(\%args, {set_default_arch=>0});
 
     local $CWD = $args{download_dir};
-    my $res = list_downloaded(%args, detail=>1);
+    my $res = list_downloaded(%args, detail=>1, per_arch=>1);
     return $res unless $res->[0] == 200;
   SW:
     for my $row (@{ $res->[2] }) {
         my $sw = $row->{software};
         next unless $row->{all_versions};
-        my @vers = split /, /, $row->{all_versions};
-        unless (@vers > 1) {
-            log_trace "Skipping software $sw (<2 versions)";
-            next SW;
-        }
-        pop @vers; # remove latest version
-        my $dir = sprintf "%s/%s", substr($sw, 0, 1), $sw;
-        local $CWD = $dir;
-      VER:
-        for my $v (@vers) {
-            if ($args{-dry_run}) {
-                log_trace "[DRY-RUN] Cleaning up $sw-$v ...";
-            } else {
-                log_trace "Cleaning up software $sw-$v ...";
-                File::Path::remove_tree($v);
+        for my $arch (sort keys %{ $row->{all_versions} }) {
+            my @vers = @{ $row->{all_versions}{$arch} };
+            unless (@vers > 1) {
+                log_trace "Skipping software '$sw' arch '$arch' (<2 versions)";
+                next SW;
             }
-        }
+            pop @vers; # remove latest version
+            my $dir = sprintf "%s/%s", substr($sw, 0, 1), $sw;
+            local $CWD = $dir;
+          VER:
+            for my $v (@vers) {
+                if ($args{-dry_run}) {
+                    log_trace "[DRY-RUN] Cleaning up $sw-$v arch $arch ...";
+                } else {
+                    log_trace "Cleaning up software $sw-$v arch $arch ...";
+                    File::Path::remove_tree("$v/$arch");
+                }
+            }
+        } # for arch
     }
     $args{-dry_run} ? [304, "Dry-run"] : [200];
 }
