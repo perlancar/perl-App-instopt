@@ -13,9 +13,12 @@ use File::chdir;
 use File::MoreUtil qw(dir_has_non_dot_files);
 use Perinci::Object;
 use PerlX::Maybe;
+use Sah::Schema::software::arch;
 
 use vars '%Config';
 our %SPEC;
+
+our @all_known_archs = @{ $Sah::Schema::software::arch::schema->[1]{in} };
 
 our %args_common = (
     download_dir => {
@@ -323,10 +326,8 @@ $SPEC{list_downloaded} = {
     summary => 'List all downloaded software',
     args => {
         %args_common,
-        detail => {
-            schema => ['bool*', is=>1],
-            cmdline_aliases => {l=>{}},
-        },
+        %argopt_arch,
+        %argopt_detail,
     },
 };
 sub list_downloaded {
@@ -353,31 +354,44 @@ sub list_downloaded {
         for my $sw (@$swlist) {
             my $dir = sprintf "%s/%s", substr($sw, 0, 1), $sw;
             unless (-d $dir) {
-                log_trace "Skipping software '$sw': directory doesn't exist";
+                log_trace "Skipping software '$sw': directory '$CWD/$dir' doesn't exist";
                 next SW;
             }
             local $CWD = $dir;
             my $mod = App::swcat::_load_swcat_mod($sw);
-            my @vers;
+            my %arch_vers; # key = arch, val = [ver1, ...]
+            my @archs = defined($args{arch}) ? ($args{arch}) : @all_known_archs;
           VER:
             for my $e (glob "*") {
-                if ($args{_arch}) {
-                    next unless dir_has_non_dot_files("$e/$args{_arch}");
-                } else {
-                    next unless -d $e;
+                unless ($mod->is_valid_version($e)) {
+                    log_trace "Skipping invalid version '$e' of software '$sw'";
+                    next;
                 }
-                next unless $mod->is_valid_version($e);
-                push @vers, $e;
+                for my $arch (@archs) {
+                    next unless dir_has_non_dot_files("$e/$arch");
+                    push @{ $arch_vers{$arch} }, $e;
+                }
             }
+
+            my @vers;
+            for my $arch (@archs) {
+                next unless $arch_vers{$arch};
+                log_trace "Found downloaded versions %s for software '%s' arch '$arch'",
+                    $arch_vers{$arch}, $sw, $arch;
+                for my $ver (@{ $arch_vers{$arch} }) {
+                    push @vers, $ver unless grep { $ver eq $_ } @vers;
+                }
+            }
+            my @vers = sort { $mod->cmp_version($a, $b) } @vers;
             unless (@vers) {
                 log_trace "Skipping software '$sw': no downloaded versions found";
+                next;
             }
-            @vers = sort { $mod->cmp_version($a, $b) } @vers;
-            log_trace "Found downloaded versions %s for software '%s'", \@vers, $sw;
             push @rows, {
                 software => $sw,
                 latest_version => $vers[-1],
                 all_versions => join(", ", @vers),
+                (arch => $args{arch}) x !!defined($args{arch}),
             };
         }
     }
@@ -408,7 +422,7 @@ sub list_downloaded_versions {
 
     return [400, "Please specify software"] unless $args{software};
 
-    my $res = list_downloaded(%args, _software=>$args{software}, _arch=>$args{arch}, detail=>1);
+    my $res = list_downloaded(%args, _software=>$args{software}, arch=>$args{arch}, detail=>1);
     return $res unless $res->[0] == 200;
     my $row = $res->[2][0];
     return [200, "OK (none downloaded)"] unless $row;
