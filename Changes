@@ -1,3 +1,14 @@
+0.014   2019-10-26  Released-By: PERLANCAR; Urgency: high
+
+	- Adjust to Software::Catalog 1.0.6 (incompatible change, renamed
+	  methods).
+
+        [REMOVED FEATURES]
+
+        - Remove make_latest_dir_as_symlink option, instead check
+	  dedicated_profile setting from the software catalog module.
+
+
 0.013   2019-10-15  Released-By: PERLANCAR; Urgency: medium
 
 	- list-downloaded: Add --arch (previously private argument _arch) and
