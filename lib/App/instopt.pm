@@ -62,40 +62,6 @@ our %argopt_download = (
     },
 );
 
-our %argopt_make_latest_dir_as_symlink = (
-    make_latest_dir_as_symlink => {
-        summary => 'Whether to use symlink to create the latest version directory',
-        'summary.alt.bool.not' => 'Do not use symlink to create latest version directory, '.
-            'but hard-copy instead',
-        schema => ['bool*'],
-        default => 1,
-        description => <<'_',
-
-The default is to use symlink. This will create a symlink to the latest version
-directory, e.g.:
-
-    firefox -> firefox-69.0.2
-
-Then the program will be symlinked from this directory, e.g.:
-
-    /usr/local/bin/firefox -> /opt/firefox/firefox
-
-Another alternative (when this option is set to false) is to use hardlink. A
-directory (`firefox`) will be copied from the latest version directory (e.g.
-`firefox-69.0.2`). Then a file (`firefox/instopt.version`) will be written to
-contain the version number (`69.0.2`). Then, as usual, the program will be
-symlinked from this directory, e.g.:
-
-    /usr/local/bin/firefox -> /opt/firefox/firefox
-
-Currently hardlinking is performed using the `cp` command (with the option
-`-la`), so you need to have this on your system (normally present on all Unix
-systems).
-
-_
-    },
-);
-
 sub _set_args_default {
     my ($args, $opts) = @_;
 
@@ -554,7 +520,7 @@ sub download {
         my (@urls, @filenames, $got_arch);
       GET_DOWNLOAD_URL:
         {
-            my $dlurlres = $mod->get_download_url(
+            my $dlurlres = $mod->download_url(
                 arch => $args{arch},
             );
             unless ($dlurlres->[0] == 200) {
@@ -716,7 +682,6 @@ $SPEC{update} = {
         %args_common,
         %App::swcat::arg0_softwares_or_patterns,
         %argopt_download,
-        %argopt_make_latest_dir_as_symlink,
     },
 };
 sub update {
@@ -731,8 +696,6 @@ sub update {
 
     my ($sws, $is_single_software) =
         App::swcat::_get_arg_softwares_or_patterns(\%args);
-
-    my $make_latest_dir_as_symlink = $args{make_latest_dir_as_symlink} // 1;
 
     my $envres = envresmulti();
   SW:
@@ -830,7 +793,7 @@ sub update {
             "/", $target_name,
         );
 
-        my $aires = $mod->get_archive_info(%args, version => $v);
+        my $aires = $mod->archive_info(%args, version => $v);
         unless ($aires->[0] == 200) {
             my $errmsg = "Can't install $sw: Can't get archive info: $aires->[0] - $aires->[1]";
             log_error $errmsg;
@@ -860,7 +823,8 @@ sub update {
             if (File::MoreUtil::file_exists($sw)) {
                 File::Path::remove_tree($sw);
             }
-            if ($make_latest_dir_as_symlink) {
+            my $use_symlink = !$mod->can("dedicated_profile") || !$mod->dedicated_profile;
+            if ($use_symlink) {
                 symlink $target_name, $sw or die "Can't symlink $sw -> $target_name: $!";
             } else {
                 IPC::System::Options::system(
@@ -901,7 +865,6 @@ $SPEC{update_all} = {
     args => {
         %args_common,
         %argopt_download,
-        %argopt_make_latest_dir_as_symlink,
     },
 };
 sub update_all {
