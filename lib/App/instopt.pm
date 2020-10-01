@@ -1,6 +1,8 @@
 package App::instopt;
 
+# AUTHORITY
 # DATE
+# DIST
 # VERSION
 
 use 5.010001;
@@ -63,11 +65,13 @@ our %argopt_download = (
 );
 
 sub _set_args_default {
+    require Software::Catalog::Util;
+
     my ($args, $opts) = @_;
 
     if ($opts->{set_default_arch}) {
         if (!$args->{arch}) {
-            $args->{arch} = App::swcat::_detect_arch();
+            $args->{arch} = Software::Catalog::Util::detect_arch();
         }
     }
     if (!$args->{download_dir}) {
