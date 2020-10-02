@@ -14,7 +14,7 @@ use Perinci::CmdLineX::CommonOptions::SelfUpgrade;
 my $prefix = "/App/instopt/";
 
 $Perinci::CmdLineX::CommonOptions::SelfUpgrade::_list_modules = sub {
-    require PERLANCAR::Module::List;
+    require Module::List::Tiny;
     my @modules = ('App::instopt');
     my $mods = PERLANCAR::Module::List::list_modules(
         'Software::Catalog::SW::', {list_modules=>1, recurse=>1});
