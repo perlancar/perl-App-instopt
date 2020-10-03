@@ -17,7 +17,7 @@ use Perinci::Object;
 use PerlX::Maybe;
 use Sah::Schema::software::arch;
 
-use vars '%Config';
+our %Config;
 our %SPEC;
 
 our @all_known_archs = @{ $Sah::Schema::software::arch::schema->[1]{in} };
