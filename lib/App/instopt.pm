@@ -191,15 +191,73 @@ sub _unwrap {
     rmdir "$dir/$entries[0].$rand" or die "Can't rmdir $dir/$entries[0].$rand: $!";
 }
 
-$SPEC{list_installed} = {
+$SPEC{list} = {
     v => 1.1,
-    summary => 'List all installed software',
+    summary => 'List software',
     args => {
         %args_common,
         %argopt_detail,
+        installed => {
+            summary => 'If true, will only list installed software',
+            schema =>  'bool*',
+            tags => ['category:filtering'],
+        },
+        latest_installed => {
+            summary => 'If true, will only list software which have their latest version installed',
+            schema =>  'bool*',
+            tags => ['category:filtering'],
+            description => <<'_',
+
+If set to true, a software which is not installed, or installed but does not
+have the latest version installed, will not be included.
+
+If set to false, a software which is not installed, or does not have the latest
+version installed, will be included.
+
+_
+        },
+        downloaded => {
+            summary => 'If true, will only list downloaded software',
+            schema =>  'bool*',
+            tags => ['category:filtering'],
+        },
+        latest_downloaded => {
+            summary => 'If true, will only list software which have their latest version downloaded',
+            schema =>  'bool*',
+            tags => ['category:filtering'],
+            description => <<'_',
+
+If set to true, a software which is not downloaded, or downloaded but does not
+have the latest version downloaded, will not be included.
+
+If set to false, a software which has no downloaded versions, or does not have
+the latest version downloaded, will be included.
+
+_
+        },
     },
+    examples => [
+        {
+            summary => 'List software that are installed but out-of-date',
+            argv => [qw/--installed --nolatest-installed/],
+            test => 0,
+            'x.dow.show_result' => 0,
+        },
+        {
+            summary => 'List software that have been downloaded but out-of-date',
+            argv => [qw/--downloaded --nolatest-downloaded/],
+            test => 0,
+            'x.dow.show_result' => 0,
+        },
+        {
+            summary => 'List software that have their latest version downloaded but not installed',
+            argv => [qw/--latest-downloaded --nolatest-installed/],
+            test => 0,
+            'x.dow.show_result' => 0,
+        },
+    ],
 };
-sub list_installed {
+sub list {
     require File::Slurper;
 
     my %args = @_;
@@ -218,8 +276,9 @@ sub list_installed {
         $swlist = $known;
     }
 
-    my %active_versions;
-    my %all_versions;
+    my %installed_active_versions;
+    my %installed_versions;
+  CHECK_INSTALLED:
     {
         local $CWD = $args{install_dir};
         log_trace "Listing installed software in $args{install_dir} ...";
@@ -234,13 +293,13 @@ sub list_installed {
                     log_trace "Skipping symlink $e: does not point to software in software list";
                     next;
                 }
-                $active_versions{$e} = $v;
+                $installed_active_versions{$e} = $v;
             } elsif ((-d $e) && (-f "$e/instopt.version")) {
                 unless (grep { $e eq $_ } @$swlist) {
                     log_trace "Skipping directory $e: name not in software list even though it has instopt.version file";
                     next;
                 }
-                chomp($active_versions{$e} =
+                chomp($installed_active_versions{$e} =
                           File::Slurper::read_text("$e/instopt.version"));
             } elsif (-d $e) {
                 my ($n, $v) = $e =~ /(.+)-(.+)/ or do {
@@ -251,86 +310,16 @@ sub list_installed {
                     log_trace "Skipping directory $e: name '$n' is not in software list";
                     next;
                 }
-                $all_versions{$n} //= [];
-                push @{ $all_versions{$n} }, $v;
+                $installed_versions{$n} //= [];
+                push @{ $installed_versions{$n} }, $v;
             }
         }
-    }
+    } # CHECK_INSTALLED
 
-    my @rows;
-    for my $sw (sort keys %all_versions) {
-        push @rows, {
-            software => $sw,
-            #version => $active_versions{$sw},
-            active_version => $active_versions{$sw},
-            inactive_versions => join(", ", grep { !defined($active_versions{$sw}) || $_ ne $active_versions{$sw} } @{ $all_versions{$sw} }),
-        };
-    }
-
-    my $resmeta = {};
-
-    if ($args{detail}) {
-        $resmeta->{'table.fields'} = [qw/software active_version inactive_versions/];
-    } else {
-        @rows = map { $_->{software} } @rows;
-    }
-
-    [200, "OK", \@rows, $resmeta];
-}
-
-$SPEC{list_installed_versions} = {
-    v => 1.1,
-    summary => 'List all installed versions of a software',
-    args => {
-        %args_common,
-        %App::swcat::arg0_software,
-    },
-};
-sub list_installed_versions {
-    my %args = @_;
-    my $state = _init(\%args);
-
-    my $res = list_installed(%args, _software=>$args{software}, detail=>1);
-    return $res unless $res->[0] == 200;
-    my $row = $res->[2][0];
-    return [200, "OK (none installed)"] unless $row;
-    return [200, "OK", [map {(split /, /, $_)} grep {defined} ($row->{active_version}, $row->{inactive_versions})]];
-}
-
-$SPEC{list_downloaded} = {
-    v => 1.1,
-    summary => 'List all downloaded software',
-    args => {
-        %args_common,
-        %argopt_arch,
-        %argopt_detail,
-        per_arch => {
-            summary => 'Return per-arch hash in the all_versions field',
-            schema => 'true*',
-        },
-    },
-    args_rels => {
-        #choose_one => ['arch', 'per_arch'],
-    },
-};
-sub list_downloaded {
-    my %args = @_;
-    my $state = _init(\%args, {set_default_arch=>0});
-
-    my $res = App::swcat::list();
-    return [500, "Can't list known software: $res->[0] - $res->[1]"] if $res->[0] != 200;
-    my $known = $res->[2];
-
-    my $swlist;
-    if ($args{_software}) {
-        return [412, "Unknown software '$args{_software}'"] unless
-            grep { $_ eq $args{_software} } @$known;
-        $swlist = [$args{_software}];
-    } else {
-        $swlist = $known;
-    }
-
-    my @rows;
+    my %downloaded_latest_versions;
+    my %downloaded_versions;
+    my %downloaded_archs;
+  CHECK_DOWNLOADED:
     {
         local $CWD = $args{download_dir};
       SW:
@@ -374,24 +363,111 @@ sub list_downloaded {
                 log_trace "Skipping software '$sw': no downloaded versions found";
                 next;
             }
-            push @rows, {
-                software => $sw,
-                latest_version => $vers[-1],
-                all_versions => $args{per_arch} ? \%arch_vers : join(", ", @vers),
-                (arch => $args{arch}) x !!defined($args{arch}),
+            $downloaded_latest_versions{$sw} = $vers[-1];
+            $downloaded_versions{$sw} = \%arch_vers;
             };
-        }
+        } # CHECK_DOWNLOADED
+
+    my @all_rows;
+    for my $sw (@$swlist) {
+        push @all_rows, {
+            software => $sw,
+            (arch => $args{arch}) x !!defined($args{arch}),
+            downloaded_versions => $downloaded_versions{$sw},
+            downloaded_latest_version => $downloaded_latest_versions{$sw},
+            installed_versions => $installed_versions{$sw},
+            installed_active_version => $installed_active_versions{$sw},
+            installed_inactive_versions => join(", ", grep { !defined($installed_active_versions{$sw}) || $_ ne $installed_active_versions{$sw} } @{ $installed_versions{$sw} }),
+        };
     }
 
-    my $resmeta = {};
+    my @rows;
+  FILTER:
+    for my $row (@all_rows) {
+        my $latest_v;
+        if (defined $args{installed}) {
+            next FILTER if (defined $row->{installed_active_version}) xor $args{installed};
+        }
+        if (defined $args{downloaded}) {
+            next FILTER if (defined $row->{downloaded_latest_version}) xor $args{downloaded};
+        }
+        if (defined $args{latest_installed} || defined $args{latest_downloaded} || $args{_check_latest_version}) {
+            my $res = App::swcat::latest_version(%args, softwares_or_patterns=>[$row->{software}]);
+            my $latest_v;
+            if ($res->[0] == 200) {
+                $latest_v = $res->[2];
+                $row->{latest_version} = $latest_v;
+            } else {
+                log_error "Can't check latest version of $row->{software}: $res->[0] - $res->[1], skipping software";
+                next FILTER;
+            }
+            if (defined $args{latest_installed}) {
+                my $latest_installed = defined $row->{installed_active_version} && $row->{installed_active_version} eq $latest_v;
+                next FILTER if $args{latest_installed} xor $latest_installed;
+            }
+            if (defined $args{latest_downloaded}) {
+                my $latest_downloaded = defined $row->{downloaded_latest_version} && $row->{downloaded_latest_version} eq $latest_v;
+                next FILTER if $args{latest_downloaded} xor $latest_downloaded;
+            }
+        }
+        push @rows, $row;
+    } # FILTER
 
+    my $resmeta = {};
     if ($args{detail}) {
-        $resmeta->{'table.fields'} = [qw/software latest_version all_versions/];
+        $resmeta->{'table.fields'} = [qw/software downloaded_versions installed_versions installed_active_versions installed_inactive_versions/];
     } else {
         @rows = map { $_->{software} } @rows;
     }
 
     [200, "OK", \@rows, $resmeta];
+}
+
+$SPEC{list_installed} = {
+    v => 1.1,
+    summary => 'List all installed software',
+    args => {
+        %args_common,
+        %argopt_detail,
+    },
+};
+sub list_installed {
+    my %args = @_;
+    list(%args, installed=>1);
+}
+
+$SPEC{list_installed_versions} = {
+    v => 1.1,
+    summary => 'List all installed versions of a software',
+    args => {
+        %args_common,
+        %App::swcat::arg0_software,
+    },
+};
+sub list_installed_versions {
+    my %args = @_;
+    my $state = _init(\%args);
+
+    return [400, "Please specify software"] unless $args{software};
+
+    my $res = list(%args, installed=>1, _software=>$args{software}, detail=>1);
+    return $res unless $res->[0] == 200;
+    return [200, "OK (none installed)"] unless @{ $res->[2] };
+    return [200, "OK", $res->[2][0]{installed_versions}];
+}
+
+$SPEC{list_downloaded} = {
+    v => 1.1,
+    summary => 'List all downloaded software',
+    args => {
+        %args_common,
+        %argopt_arch,
+        %argopt_detail,
+    },
+};
+sub list_downloaded {
+    my %args = @_;
+    list(%args, downloaded=>1);
 }
 
 $SPEC{list_downloaded_versions} = {
@@ -409,11 +485,10 @@ sub list_downloaded_versions {
 
     return [400, "Please specify software"] unless $args{software};
 
-    my $res = list_downloaded(%args, _software=>$args{software}, arch=>$args{arch}, detail=>1);
+    my $res = list(%args, downloaded=>1, _software=>$args{software}, arch=>$args{arch}, detail=>1);
     return $res unless $res->[0] == 200;
-    my $row = $res->[2][0];
-    return [200, "OK (none downloaded)"] unless $row;
-    return [200, "OK", [map {(split /, /, $_)} grep {defined} $row->{all_versions}]];
+    return [200, "OK (none downloaded)"] unless @{ $res->[2] };
+    return [200, "OK", $res->[2][0]{downloaded_versions}];
 }
 
 $SPEC{compare_versions} = {
@@ -430,54 +505,24 @@ sub compare_versions {
 
     my $res;
 
-    $res = list_installed(%args, detail=>1);
+    $res = list(%args, installed=>1, detail=>1, _check_latest_version=>1);
     return $res unless $res->[0] == 200;
-    my $installed = $res->[2];
 
-    for my $row (@$installed) {
-        my $sw = $row->{software};
-        my $mod = App::swcat::_load_swcat_mod($sw);
-
-        $row->{installed} = delete $row->{active_version};
-        $row->{installed_inactive} = delete $row->{inactive_versions};
-
-        my $downloaded_vv;
-        $res = list_downloaded_versions(%args, software=>$sw);
-        if ($res->[0] == 200) {
-            $downloaded_vv = join ", ", @{$res->[2]};
-        } else {
-            log_error "Can't check downloaded versions of $sw: $res->[0] - $res->[1]";
-        }
-        $row->{downloaded} = $downloaded_vv;
-
-        my $latest_v;
-        $res = App::swcat::latest_version(%args, softwares_or_patterns=>[$sw]);
-        if ($res->[0] == 200) {
-            $latest_v = $res->[2];
-        } else {
-            log_error "Can't check latest version of $sw: $res->[0] - $res->[1]";
-        }
-        $row->{latest} = $latest_v;
-
-        my @vv;
-        push @vv, split(/,\s*/, $downloaded_vv) if defined $downloaded_vv;
-        push @vv, $latest_v if defined $latest_v;
-        @vv = sort { $mod->cmp_version($a, $b) } @vv;
-
+    for my $row (@{ $res->[2] }) {
+        my $mod = App::swcat::_load_swcat_mod($row->{software});
         $row->{status} = '';
-        if (@vv) {
-            my $cmp = $mod->cmp_version($row->{installed}, $vv[-1]);
-            if ($cmp >= 0) {
-                $row->{status} = 'up to date';
-            } else {
-                $row->{status} = "updatable to $vv[-1]";
-            }
+        my $cmp = $mod->cmp_version($row->{installed_active_version}, $row->{latest_version});
+        if ($cmp >= 0) {
+            $row->{status} = 'up to date';
+        } else {
+            $row->{status} = "updatable to $row->{latest_version}";
         }
+        # to keep table rendering simple in CLI
+        delete $row->{downloaded_versions};
+        delete $row->{installed_versions};
+        delete $row->{installed_inactive_versions};
     }
-    my $resmeta = {
-        'table.fields' => [qw/software installed installed_inactive downloaded latest status/],
-    };
-    [200, "OK", $installed, $resmeta];
+    $res;
 }
 
 $SPEC{download} = {
@@ -650,7 +695,7 @@ sub cleanup_download_dir {
     my $state = _init(\%args, {set_default_arch=>0});
 
     local $CWD = $args{download_dir};
-    my $res = list_downloaded(%args, detail=>1, per_arch=>1);
+    my $res = list_downloaded(%args, detail=>1);
     return $res unless $res->[0] == 200;
   SW:
     for my $row (@{ $res->[2] }) {

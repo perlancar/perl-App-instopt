@@ -27,6 +27,7 @@ my $cli = Perinci::CmdLine::Any->new(
     url => $prefix,
     log => 1,
     subcommands => {
+        'list'                     => {url=>"${prefix}list"},
         'list-installed'           => {url=>"${prefix}list_installed"},
         'list-installed-versions'  => {url=>"${prefix}list_installed_versions"},
         'list-downloaded'          => {url=>"${prefix}list_downloaded"},
