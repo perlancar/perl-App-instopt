@@ -30,6 +30,7 @@ my $cli = Perinci::CmdLine::Any->new(
         'list'                     => {url=>"${prefix}list"},
         'list-installed'           => {url=>"${prefix}list_installed"},
         'list-installed-versions'  => {url=>"${prefix}list_installed_versions"},
+        'is-installed'             => {url=>"${prefix}is_installed"},
         'list-downloaded'          => {url=>"${prefix}list_downloaded"},
         'list-downloaded-versions' => {url=>"${prefix}list_downloaded_versions"},
         'download'                 => {url=>"${prefix}download"},
