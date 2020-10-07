@@ -64,6 +64,13 @@ our %argopt_download = (
     },
 );
 
+our %argopt_quiet = (
+    quiet => {
+        schema => 'bool*',
+        cmdline_aliases => {q=>{}},
+    },
+);
+
 sub _set_args_default {
     require Software::Catalog::Util;
 
@@ -454,6 +461,26 @@ sub list_installed_versions {
     return $res unless $res->[0] == 200;
     return [200, "OK (none installed)"] unless @{ $res->[2] };
     return [200, "OK", $res->[2][0]{installed_versions}];
+}
+
+$SPEC{is_installed} = {
+    v => 1.1,
+    summary => 'Check if a software is installed',
+    args => {
+        %args_common,
+        %App::swcat::arg0_software,
+        %argopt_quiet,
+    },
+};
+sub is_installed {
+    my %args = @_;
+    my $res = list(%args, _software=>$args{software}, installed=>1);
+    return $res unless $res->[0] == 200;
+    my $is_installed = @{ $res->[2] } ? 1:0;
+    [200, "OK", $is_installed, {
+        'cmdline.result' => $args{quiet} ? "" : "$args{software} is ".($is_installed ? "":"NOT ")."installed",
+        'cmdline.exit_code' => $is_installed ? 0:1,
+     }];
 }
 
 $SPEC{list_downloaded} = {
