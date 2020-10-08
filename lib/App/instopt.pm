@@ -943,7 +943,10 @@ sub update {
             }
             my $use_symlink = !$mod->is_dedicated_profile;
             if ($use_symlink) {
-                symlink $target_name, $sw or die "Can't symlink $sw -> $target_name: $!";
+                symlink $target_name, $sw or do {
+                    $envres->add_result(500, "Can't install $sw: Can't symlink $sw -> $target_name: $!", {item_id=>$sw});
+                    next SW;
+                };
             } else {
                 IPC::System::Options::system(
                     {log=>1, die=>1},
@@ -964,7 +967,10 @@ sub update {
                     my $target = "$args{install_dir}/$sw$e->{path}/$e->{name}";
                     $target =~ s!//!/!g;
                     log_trace "Creating symlink $args{program_dir}/$e->{name} -> $target ...";
-                    symlink $target, $e->{name} or die "Can't symlink $e->{name} -> $target: $!";
+                    symlink $target, $e->{name} or do {
+                        $envres->add_result(500, "Can't install $sw: Can't symlink $e->{name} -> $target: $!", {item_id=>$sw});
+                        next SW;
+                    };
                 } else {
                     log_warn "%s/%s is not a symlink, skipping", $args{program_dir}, $e->{name};
                     next;
@@ -981,7 +987,10 @@ sub update {
                 my $target = "$args{install_dir}/$sw/$filename";
                 $target =~ s!//!/!g;
                 log_trace "Creating symlink $args{program_dir}/$sw -> $target ...";
-                symlink $target, $sw or die "Can't symlink $sw -> $target: $!";
+                symlink $target, $sw or do {
+                    $envres->add_result(500, "Can't install $sw: Can't symlink $sw -> $target: $!", {item_id=>$sw});
+                    next SW;
+                };
             }
         }
 
