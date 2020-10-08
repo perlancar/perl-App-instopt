@@ -463,22 +463,54 @@ sub list_installed_versions {
     return [200, "OK", $res->[2][0]{installed_versions}];
 }
 
-$SPEC{is_installed} = {
+$SPEC{is_installed_any} = {
     v => 1.1,
-    summary => 'Check if a software is installed',
+    summary => 'Check if any version of a software is installed',
+    description => <<'_',
+
+The installed version does not need to be the latest. To check whether the
+latest version of a software is installed, use `is-installed-latest`.
+
+_
     args => {
         %args_common,
         %App::swcat::arg0_software,
         %argopt_quiet,
     },
 };
-sub is_installed {
+sub is_installed_any {
     my %args = @_;
     my $res = list(%args, _software=>$args{software}, installed=>1);
     return $res unless $res->[0] == 200;
     my $is_installed = @{ $res->[2] } ? 1:0;
     [200, "OK", $is_installed, {
         'cmdline.result' => $args{quiet} ? "" : "$args{software} is ".($is_installed ? "":"NOT ")."installed",
+        'cmdline.exit_code' => $is_installed ? 0:1,
+     }];
+}
+
+$SPEC{is_installed_latest} = {
+    v => 1.1,
+    summary => 'Check if latest version of a software is installed',
+    description => <<'_',
+
+To only check whether any version of a software is installed, use
+`is-installed-any`.
+
+_
+    args => {
+        %args_common,
+        %App::swcat::arg0_software,
+        %argopt_quiet,
+    },
+};
+sub is_installed_latest {
+    my %args = @_;
+    my $res = list(%args, _software=>$args{software}, latest_installed=>1);
+    return $res unless $res->[0] == 200;
+    my $is_installed = @{ $res->[2] } ? 1:0;
+    [200, "OK", $is_installed, {
+        'cmdline.result' => $args{quiet} ? "" : "Latest version of $args{software} is ".($is_installed ? "":"NOT ")."installed",
         'cmdline.exit_code' => $is_installed ? 0:1,
      }];
 }
@@ -495,6 +527,58 @@ $SPEC{list_downloaded} = {
 sub list_downloaded {
     my %args = @_;
     list(%args, downloaded=>1);
+}
+
+$SPEC{is_downloaded_any} = {
+    v => 1.1,
+    summary => 'Check if any version of a software is downloaded',
+    description => <<'_',
+
+The download does not need to be the latest version. To check if the latest
+version of a software is downloaded, use `is-downloaded-latest`.
+
+_
+    args => {
+        %args_common,
+        %App::swcat::arg0_software,
+        %argopt_quiet,
+    },
+};
+sub is_downloaded_any {
+    my %args = @_;
+    my $res = list(%args, _software=>$args{software}, downloaded=>1);
+    return $res unless $res->[0] == 200;
+    my $is_downloaded = @{ $res->[2] } ? 1:0;
+    [200, "OK", $is_downloaded, {
+        'cmdline.result' => $args{quiet} ? "" : "$args{software} is ".($is_downloaded ? "":"NOT ")."downloaded",
+        'cmdline.exit_code' => $is_downloaded ? 0:1,
+     }];
+}
+
+$SPEC{is_downloaded_latest} = {
+    v => 1.1,
+    summary => 'Check if latest version of a software has been downloaded',
+    description => <<'_',
+
+To only check whether any version of a software has been downloaded, use
+`is-downloaded-any`.
+
+_
+    args => {
+        %args_common,
+        %App::swcat::arg0_software,
+        %argopt_quiet,
+    },
+};
+sub is_downloaded_latest {
+    my %args = @_;
+    my $res = list(%args, _software=>$args{software}, latest_downloaded=>1);
+    return $res unless $res->[0] == 200;
+    my $is_downloaded = @{ $res->[2] } ? 1:0;
+    [200, "OK", $is_downloaded, {
+        'cmdline.result' => $args{quiet} ? "" : "Latest version of $args{software} is ".($is_downloaded ? "":"NOT ")."downloaded",
+        'cmdline.exit_code' => $is_downloaded ? 0:1,
+     }];
 }
 
 $SPEC{list_downloaded_versions} = {
