@@ -864,7 +864,7 @@ sub update {
     for my $sw (@$sws) {
         my $mod = App::swcat::_load_swcat_mod($sw);
         my $res = list_installed_versions(%args, software=>$sw);
-        my $v0 = $res->[2] ? $res->[2][-1] : undef;
+        my $v0 = $res->[2] ? $res->[2]{ $args{arch} }[-1] : undef;
 
         my $v;
         my ($filepath, $filename);
@@ -895,7 +895,7 @@ sub update {
             }
           GET_DOWNLOADED: {
                 my $res = list_downloaded_versions(%args, software=>$sw);
-                $v = $res->[2] ? $res->[2][-1] : undef;
+                $v = $res->[2] ? $res->[2]{ $args{arch} }[-1] : undef;
                 if (!defined $v) {
                     my $errmsg = "Can't install $sw: No downloaded version available";
                     log_error $errmsg;
