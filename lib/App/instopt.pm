@@ -662,7 +662,8 @@ sub download {
         my $res;
 
         $res = list_downloaded_versions(%args, software=>$sw);
-        my $v0 = $res->[2] ? $res->[2][-1] : undef;
+        #use DD; dd $res;
+        my $v0 = $res->[2] ? $res->[2]{ $args{arch} }[-1] : undef;
 
         $res = App::swcat::latest_version(%args, softwares_or_patterns=>[$sw]);
         unless ($res->[0] == 200) {
