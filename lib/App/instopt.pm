@@ -1,4 +1,4 @@
-package App::instopt;
+Gpackage App::instopt;
 
 # AUTHORITY
 # DATE
@@ -662,7 +662,6 @@ sub download {
         my $res;
 
         $res = list_downloaded_versions(%args, software=>$sw);
-        #use DD; dd $res;
         my $v0 = $res->[2] ? $res->[2]{ $args{arch} }[-1] : undef;
 
         $res = App::swcat::latest_version(%args, softwares_or_patterns=>[$sw]);
@@ -864,7 +863,7 @@ sub update {
     for my $sw (@$sws) {
         my $mod = App::swcat::_load_swcat_mod($sw);
         my $res = list_installed_versions(%args, software=>$sw);
-        my $v0 = $res->[2] ? $res->[2]{ $args{arch} }[-1] : undef;
+        my $v0 = $res->[2] ? $res->[2][-1] : undef;
 
         my $v;
         my ($filepath, $filename);
