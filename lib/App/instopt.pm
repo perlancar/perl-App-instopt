@@ -1,4 +1,4 @@
-Gpackage App::instopt;
+package App::instopt;
 
 # AUTHORITY
 # DATE
