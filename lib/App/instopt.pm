@@ -771,10 +771,10 @@ sub cleanup_install_dir {
     for my $row (@{ $res->[2] }) {
         my $sw = $row->{software};
         log_trace "Skipping software $sw because there is no active version"
-            unless defined $row->{active_version};
-        next unless defined $row->{inactive_versions};
+            unless defined $row->{installed_active_version};
+        next unless defined $row->{installed_inactive_versions};
         #log_trace "Cleaning up software $sw ...";
-        for my $v (split /, /, $row->{inactive_versions}) {
+        for my $v (split /, /, $row->{installed_inactive_versions}) {
             my $dir = "$sw-$v";
             unless (-d $dir) {
                 log_trace "Skipping version $v of software $sw (directory does not exist)";
