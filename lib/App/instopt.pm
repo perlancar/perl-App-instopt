@@ -781,9 +781,9 @@ sub cleanup_install_dir {
                 next;
             }
             if ($args{-dry_run}) {
-                log_trace "[DRY-RUN] Removing $dir ...";
+                log_info "[DRY-RUN] Removing $dir ...";
             } else {
-                log_trace "Removing $dir ...";
+                log_info "Removing $dir ...";
                 File::Path::remove_tree($dir);
             }
         }
@@ -824,9 +824,9 @@ sub cleanup_download_dir {
           VER:
             for my $v (@vers) {
                 if ($args{-dry_run}) {
-                    log_trace "[DRY-RUN] Cleaning up $sw-$v arch $arch ...";
+                    log_info "[DRY-RUN] Cleaning up $sw-$v arch $arch ...";
                 } else {
-                    log_trace "Cleaning up software $sw-$v arch $arch ...";
+                    log_info "Cleaning up software $sw-$v arch $arch ...";
                     File::Path::remove_tree("$v/$arch");
                 }
             }
