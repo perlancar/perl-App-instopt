@@ -204,6 +204,13 @@ containing:
 After that, install away.
 
 
+=head1 prepend:FILES
+
+F<instopt.version> - This file is written in the hardlinked installed software
+directory to mark which version the software is. Unlike with symlinking, when
+hardlinking there is no straightforward way to know the version.
+
+
 =head1 SEE ALSO
 
 L<swcat> from L<App::swcat>
