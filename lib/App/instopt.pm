@@ -811,9 +811,8 @@ sub cleanup_download_dir {
   SW:
     for my $row (@{ $res->[2] }) {
         my $sw = $row->{software};
-        next unless $row->{all_versions};
-        for my $arch (sort keys %{ $row->{all_versions} }) {
-            my @vers = @{ $row->{all_versions}{$arch} };
+        for my $arch (sort keys %{ $row->{downloaded_versions} }) {
+            my @vers = @{ $row->{downloaded_versions}{$arch} };
             unless (@vers > 1) {
                 log_trace "Skipping software '$sw' arch '$arch' (<2 versions)";
                 next SW;
