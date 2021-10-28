@@ -1,10 +1,5 @@
 package App::instopt;
 
-# AUTHORITY
-# DATE
-# DIST
-# VERSION
-
 use 5.010001;
 use strict 'subs', 'vars';
 use warnings;
@@ -16,6 +11,11 @@ use File::MoreUtil qw(dir_has_non_dot_files);
 use Perinci::Object;
 use PerlX::Maybe;
 use Sah::Schema::software::arch;
+
+# AUTHORITY
+# DATE
+# DIST
+# VERSION
 
 our %Config;
 our %SPEC;
@@ -292,7 +292,7 @@ sub list {
         for my $e (glob "*") {
             if (-l $e) {
                 unless (grep { $e eq $_ } @$swlist) {
-                    log_trace "Skipping symlink $e: name not in software list";
+                    log_trace "Skipping symlink $e: name '$e' not in software list";
                     next;
                 }
                 my $v = readlink($e);
@@ -303,14 +303,14 @@ sub list {
                 $installed_active_versions{$e} = $v;
             } elsif ((-d $e) && (-f "$e/instopt.version")) {
                 unless (grep { $e eq $_ } @$swlist) {
-                    log_trace "Skipping directory $e: name not in software list even though it has instopt.version file";
+                    log_trace "Skipping directory $e: name '$e' not in software list even though it has instopt.version file";
                     next;
                 }
                 chomp($installed_active_versions{$e} =
                           File::Slurper::read_text("$e/instopt.version"));
             } elsif (-d $e) {
                 my ($n, $v) = $e =~ /(.+)-(.+)/ or do {
-                    log_trace "Skipping directory $e: name does not contain dash (for NAME-VERSION)";
+                    log_trace "Skipping directory $e: name '$e' does not contain dash (for NAME-VERSION)";
                     next;
                 };
                 unless (grep { $n eq $_ } @$swlist) {
