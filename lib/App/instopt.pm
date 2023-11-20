@@ -7,7 +7,7 @@ use Log::ger;
 
 use App::swcat ();
 use File::chdir;
-use File::MoreUtil qw(dir_has_non_dot_files);
+use File::Util::Test qw(dir_has_non_dot_files);
 use Perinci::Object;
 use PerlX::Maybe;
 use Sah::Schema::software::arch;
@@ -845,7 +845,7 @@ $SPEC{update} = {
 };
 sub update {
     require Archive::Any;
-    require File::MoreUtil;
+    require File::Util::Test;
     require File::Path;
     require Filename::Archive;
     require Filename::Executable;
@@ -1021,7 +1021,7 @@ sub update {
       SYMLINK_OR_HARDLINK_DIR: {
             log_trace "Creating/updating directory symlink/hardlink to latest version ...";
             local $CWD = $args{install_dir};
-            if (File::MoreUtil::file_exists($sw)) {
+            if (File::Util::Test::file_exists($sw)) {
                 File::Path::remove_tree($sw);
             }
             my $use_symlink = !$mod->is_dedicated_profile;
@@ -1045,7 +1045,7 @@ sub update {
             log_trace "Creating/updating program symlinks ...";
             my $programs = $aires->[2]{programs} // [];
             for my $e (@$programs) {
-                if ((-l $e->{name}) || !File::MoreUtil::file_exists($e->{name})) {
+                if ((-l $e->{name}) || !File::Util::Test::file_exists($e->{name})) {
                     unlink $e->{name};
                     my $target = "$args{install_dir}/$sw$e->{path}/$e->{name}";
                     $target =~ s!//!/!g;
@@ -1065,7 +1065,7 @@ sub update {
             last unless $fileformat eq 'executable';
             local $CWD = $args{program_dir};
             log_trace "Creating/updating program symlink ...";
-            if ((-l $sw) || !File::MoreUtil::file_exists($sw)) {
+            if ((-l $sw) || !File::Util::Test::file_exists($sw)) {
                 unlink $sw;
                 my $target = "$args{install_dir}/$sw/$filename";
                 $target =~ s!//!/!g;
